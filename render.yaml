@@ -1,0 +1,49 @@
+services:
+  # Laravel Web Service
+  - type: web
+    name: ai-careerprep-pro
+    env: docker
+    plan: free # Use free tier for web service
+    region: oregon # Render region (e.g. oregon, frankfurt, singapore)
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_URL
+        value: https://ai-careerprep-pro.onrender.com # Replace or let Render assign automatically
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_HOST
+        fromDatabase:
+          name: ai-careerprep-db
+          property: host
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_DATABASE
+        fromDatabase:
+          name: ai-careerprep-db
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: ai-careerprep-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: ai-careerprep-db
+          property: password
+      - key: RUN_MIGRATIONS
+        value: "true"
+      - key: APP_KEY
+        generateValue: true # Render will generate a random string, but Laravel key should be base64. User can overwrite in dashboard.
+      - key: SESSION_DRIVER
+        value: database
+      - key: QUEUE_CONNECTION
+        value: database
+      - key: CACHE_STORE
+        value: database
+
+databases:
+  - name: ai-careerprep-db
+    plan: free
+    region: oregon
