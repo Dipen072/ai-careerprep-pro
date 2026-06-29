@@ -45,5 +45,6 @@ services:
 
 databases:
   - name: ai-careerprep-db
+    databaseName: ai_careerprep_pro
     plan: free
     region: oregon
