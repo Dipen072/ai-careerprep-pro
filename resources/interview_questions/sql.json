@@ -1,0 +1,116 @@
+{
+    "fresher": [
+        {
+            "id": "dbms_vs_rdbms",
+            "question": {
+                "en": "What is the difference between DBMS and RDBMS?",
+                "hi": "DBMS और RDBMS के बीच क्या अंतर है?",
+                "gu": "DBMS અને RDBMS વચ્ચે શું તફાવત છે?",
+                "hi_en": "DBMS aur RDBMS me kya difference hai?",
+                "gu_en": "DBMS ane RDBMS ma shu difference chhe?"
+            },
+            "hint": {
+                "en": "Hint: RDBMS stores data in tables with relationships, whereas DBMS stores data as flat files without relations.",
+                "hi": "संकेत: RDBMS डेटा को संबंधों के साथ तालिकाओं में संग्रहीत करता है, जबकि DBMS डेटा को फ्लैट फ़ाइलों के रूप में संग्रहीत करता है।",
+                "gu": "સંકેત: RDBMS સંબંધિત કોષ્ટકોમાં ડેટા સ્ટોર કરે છે, જ્યારે DBMS ફ્લેટ ફાઇલમાં.",
+                "hi_en": "Hint: RDBMS tables aur relations use karta hai data store karne ke liye, DBMS flat files use karta hai.",
+                "gu_en": "Hint: RDBMS ma tables and relations hoy chhe, DBMS ma flat files hoy."
+            },
+            "evaluation": {
+                "score": 87,
+                "communication_score": 89,
+                "confidence_score": 88,
+                "positive_points": [
+                    "Identified table structure in RDBMS",
+                    "Mentioned integrity constraints and foreign keys"
+                ],
+                "missing_points": [
+                    "Could clarify DBMS flat file limitations"
+                ],
+                "suggestions": [
+                    "Highlight relationships (relations) as the key difference.",
+                    "Give examples like MySQL for RDBMS."
+                ],
+                "improved_answer": "DBMS stores data as files and does not enforce relationships or normalization. RDBMS (Relational DBMS) stores data in structured tables with rows and columns, enforces relationships using primary\/foreign keys, maintains data integrity, and supports ACID properties.",
+                "grammar_feedback": "Good technical comparison.",
+                "voice_analysis": "Speaking speed: 124 WPM.",
+                "camera_analysis": "Eye contact: 86%."
+            }
+        },
+        {
+            "id": "inner_vs_left_join",
+            "question": {
+                "en": "What is the difference between INNER JOIN and LEFT JOIN in SQL?",
+                "hi": "SQL में INNER JOIN और LEFT JOIN के बीच क्या अंतर है?",
+                "gu": "SQL માં INNER JOIN અને LEFT JOIN વચ્ચે શું તફાવત છે?",
+                "hi_en": "INNER JOIN aur LEFT JOIN me kya difference hai?",
+                "gu_en": "INNER JOIN ane LEFT JOIN ma shu difference chhe?"
+            },
+            "hint": {
+                "en": "Hint: INNER JOIN returns matching rows from both tables, while LEFT JOIN returns all rows from the left table and matched rows from the right.",
+                "hi": "संकेत: INNER JOIN दोनों तालिकाओं से मेल खाने वाली पंक्तियाँ लौटाता है, जबकि LEFT JOIN बाईं तालिका से सभी पंक्तियाँ लौटाता है।",
+                "gu": "સંકેત: INNER JOIN બંને કોષ્ટકોમાંથી મેચિંગ રો આપે છે, જ્યારે LEFT JOIN ડાબા કોષ્ટકની બધી રો આપે છે.",
+                "hi_en": "Hint: INNER JOIN matching rows deta hai, LEFT JOIN left table ki saari rows aur right table ki matched rows deta hai.",
+                "gu_en": "Hint: INNER matching data aape, LEFT aakha left table no data aape."
+            },
+            "evaluation": {
+                "score": 90,
+                "communication_score": 91,
+                "confidence_score": 89,
+                "positive_points": [
+                    "Clearly explained matching row logic for INNER JOIN",
+                    "Correctly noted that LEFT JOIN returns unmatched left rows with NULLs for right table"
+                ],
+                "missing_points": [
+                    "Could show a quick syntax example"
+                ],
+                "suggestions": [
+                    "Write a quick SQL JOIN query structure in your explanation to make it concrete."
+                ],
+                "improved_answer": "INNER JOIN returns only the rows that have matching values in both tables. LEFT JOIN (or LEFT OUTER JOIN) returns all records from the left table, and the matched records from the right table. Unmatched records from the right table are padded with NULL values.",
+                "grammar_feedback": "Clear and accurate.",
+                "voice_analysis": "Speaking speed: 122 WPM.",
+                "camera_analysis": "Eye contact: 88%."
+            }
+        }
+    ],
+    "experienced": [
+        {
+            "id": "db_indexes",
+            "question": {
+                "en": "What are database indexes, and how do they speed up search queries?",
+                "hi": "Database indexes क्या हैं, और वे खोज प्रश्नों को कैसे तेज़ करते हैं?",
+                "gu": "Database indexes શું છે, અને તેઓ સર્ચ ક્વેરીઝને કેવી રીતે ઝડપી બનાવે છે?",
+                "hi_en": "Database indexes kya hain, aur ye search queries ko kaise speed up karte hain?",
+                "gu_en": "Database indexes shu chhe, ane e search queries ne kevi rite fast banave chhe?"
+            },
+            "hint": {
+                "en": "Hint: Indexes are pointer structures (like B-Trees) that allow the database to locate rows quickly without scanning the entire table.",
+                "hi": "संकेत: इंडेक्स पॉइंटर संरचनाएं हैं जो डेटाबेस को पूरी तालिका को स्कैन किए बिना पंक्तियों को खोजने की अनुमति देती हैं।",
+                "gu": "સંકેત: ઇન્ડેક્સ એ પોઇન્ટર સ્ટ્રક્ચર (જેમ કે B-Trees) છે જે ડેટા ઝડપથી શોધવામાં મદદ કરે છે.",
+                "hi_en": "Hint: Indexes database me data pointers ki tarah hote hain (B-Trees), jo full table scan ko prevent karte hain.",
+                "gu_en": "Hint: Indexes B-Trees no use kare chhe data fast shodhva mate, full table scan karvu nathi padtu."
+            },
+            "evaluation": {
+                "score": 91,
+                "communication_score": 92,
+                "confidence_score": 90,
+                "positive_points": [
+                    "Correctly defined indexes as search lookup optimization structures",
+                    "Mentioned preventing full table scans"
+                ],
+                "missing_points": [
+                    "Could mention the drawback of indexing (slower INSERT\/UPDATE operations)"
+                ],
+                "suggestions": [
+                    "Mention data structures like B-Tree or Hash indexes.",
+                    "Explain the write overhead associated with indexes."
+                ],
+                "improved_answer": "A database index is a data structure (typically a B-Tree) that improves data retrieval speed by providing a quick lookup path to rows, preventing slow full-table scans. However, indexes introduce write overhead, making INSERT, UPDATE, and DELETE operations slightly slower as the index must be updated.",
+                "grammar_feedback": "Excellent architectural depth.",
+                "voice_analysis": "Speaking speed: 125 WPM.",
+                "camera_analysis": "Eye contact: 90%."
+            }
+        }
+    ]
+}

@@ -1,0 +1,118 @@
+{
+    "fresher": [
+        {
+            "id": "what_is_python",
+            "question": {
+                "en": "What is Python?",
+                "hi": "Python क्या है?",
+                "gu": "Python શું છે?",
+                "hi_en": "Python kya hai?",
+                "gu_en": "Python shu chhe?"
+            },
+            "hint": {
+                "en": "Hint: Mention that Python is a high-level, interpreted language known for its clear readability and versatility.",
+                "hi": "संकेत: बताएं कि Python एक हाई-लेवल, इंटरप्रिटेड भाषा है जो अपनी स्पष्ट पठनीयता और बहुमुखी प्रतिभा के लिए जानी जाती है।",
+                "gu": "સંકેત: સમજાવો કે Python એ એક ઉચ્ચ-સ્તરની, ઇન્ટરપ્રિટેડ ભાષા છે.",
+                "hi_en": "Hint: Batao ki Python ek high-level, interpreted language hai jo readability aur versatility ke liye jani jati hai.",
+                "gu_en": "Hint: Kaho ke Python high-level interpreted programming language chhe."
+            },
+            "evaluation": {
+                "score": 88,
+                "communication_score": 90,
+                "confidence_score": 88,
+                "positive_points": [
+                    "Correctly identified Python as high-level and interpreted",
+                    "Mentioned code readability"
+                ],
+                "missing_points": [
+                    "Could mention dynamic typing",
+                    "Could highlight multi-paradigm support"
+                ],
+                "suggestions": [
+                    "Highlight Python's simple syntax.",
+                    "Mention applications in Data Science and Web Development."
+                ],
+                "improved_answer": "Python is a high-level, interpreted, general-purpose programming language. It features dynamic typing, automatic garbage collection, and is designed with readability in mind, supporting multiple programming paradigms including OOP and functional programming.",
+                "grammar_feedback": "Good technical depth.",
+                "voice_analysis": "Speaking speed: 125 WPM.",
+                "camera_analysis": "Eye contact: 88%. Posture: Steady."
+            }
+        },
+        {
+            "id": "python_features",
+            "question": {
+                "en": "What are the main features of Python?",
+                "hi": "Python की मुख्य विशेषताएं क्या हैं?",
+                "gu": "Python ની મુખ્ય વિશેષતાઓ શું છે?",
+                "hi_en": "Python ki main features kya hain?",
+                "gu_en": "Python ni main features shu chhe?"
+            },
+            "hint": {
+                "en": "Hint: Highlight readability, dynamic typing, automatic memory management, and extensive libraries.",
+                "hi": "संकेत: पठनीयता, डायनामिक टाइपिंग, ऑटोमैटिक मेमोरी मैनेजमेंट और व्यापक लाइब्रेरी को रेखांकित करें।",
+                "gu": "સંકેત: સરળતા, ડાયનેમિક ટાઇપિંગ અને મોટી લાઇબ્રેરીઓ વિશે જણાવો.",
+                "hi_en": "Hint: Readability, dynamic typing, garbage collection aur libraries ke baare me batao.",
+                "gu_en": "Hint: Features jeva ke dynamic typing, automatic memory management ane libraries na vishe kaho."
+            },
+            "evaluation": {
+                "score": 87,
+                "communication_score": 89,
+                "confidence_score": 86,
+                "positive_points": [
+                    "Listed multiple key features correctly",
+                    "Mentioned the large ecosystem of libraries"
+                ],
+                "missing_points": [
+                    "Could explain automatic memory management (garbage collection)"
+                ],
+                "suggestions": [
+                    "List features in a structured way.",
+                    "Briefly explain each feature."
+                ],
+                "improved_answer": "Key features of Python include: 1) Easy-to-read syntax, 2) Interpreted execution, 3) Dynamically typed variables, 4) Automatic garbage collection, and 5) An extensive standard library and ecosystem (like Django, Pandas).",
+                "grammar_feedback": "Clear structure.",
+                "voice_analysis": "Speaking speed: 120 WPM.",
+                "camera_analysis": "Eye contact: 85%."
+            }
+        }
+    ],
+    "experienced": [
+        {
+            "id": "gil_concept",
+            "question": {
+                "en": "Explain the Global Interpreter Lock (GIL) in Python and its impact on multi-threading.",
+                "hi": "Python में Global Interpreter Lock (GIL) क्या है और multi-threading पर इसका क्या प्रभाव पड़ता है?",
+                "gu": "Python માં Global Interpreter Lock (GIL) શું છે અને multi-threading પર તેની શું અસર થાય છે?",
+                "hi_en": "Python me Global Interpreter Lock (GIL) kya hai aur multi-threading par iska kya impact padta hai?",
+                "gu_en": "Python ma Global Interpreter Lock (GIL) shu chhe aur multi-threading par eni shu asar thay chhe?"
+            },
+            "hint": {
+                "en": "Hint: Focus on how GIL is a mutex in CPython that restricts thread execution to one thread at a time, limiting CPU parallelism.",
+                "hi": "संकेत: ध्यान दें कि GIL CPython में एक म्यूटैक्स है जो एक बार में केवल एक ही थ्रेड को निष्पादित करने की अनुमति देता है।",
+                "gu": "સંકેત: GIL એ CPython નો મ્યુટેક્સ છે જે એક સમયે એક જ થ્રેડને રન થવા દે છે.",
+                "hi_en": "Hint: Focus karo ki GIL ek mutex lock hai standard CPython me jo ek time pe ek hi thread run karne deta hai.",
+                "gu_en": "Hint: GIL na vishe kaho ke e ek time par ek j thread ne execute thava de chhe CPython ma."
+            },
+            "evaluation": {
+                "score": 91,
+                "communication_score": 93,
+                "confidence_score": 90,
+                "positive_points": [
+                    "Correctly identified GIL as a mutex in CPython",
+                    "Explained it limits CPU-bound multi-threading"
+                ],
+                "missing_points": [
+                    "Could explain how to bypass it (multiprocessing module)"
+                ],
+                "suggestions": [
+                    "Clarify that GIL doesn't impact I\/O-bound tasks.",
+                    "Mention alternatives like multiprocessing."
+                ],
+                "improved_answer": "The Global Interpreter Lock (GIL) is a mutex lock in the standard CPython implementation that ensures only one thread executes Python bytecode at a time. It prevents parallel execution in CPU-bound multi-threaded programs. To bypass this limit, developers use multiprocessing or alternative Python implementations like Jython.",
+                "grammar_feedback": "Excellent explanation.",
+                "voice_analysis": "Speaking speed: 128 WPM.",
+                "camera_analysis": "Eye contact: 91%."
+            }
+        }
+    ]
+}

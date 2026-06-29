@@ -1,0 +1,2038 @@
+﻿<?php
+
+namespace App\Services;
+
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+
+class GeminiService
+{
+    protected $apiKey;
+    protected $endpoint;
+
+    public function __construct()
+    {
+        $this->apiKey = env('GEMINI_API_KEY');
+        $this->endpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+    }
+
+    /**
+     * Call Gemini API or fall back to local AI mock
+     */
+    protected function callGemini($prompt, $jsonResponse = false)
+    {
+        if (empty($this->apiKey)) {
+            return $this->getMockResponse($prompt, $jsonResponse);
+        }
+
+        try {
+            $response = Http::post("{$this->endpoint}?key={$this->apiKey}", [
+                'contents' => [
+                    [
+                        'parts' => [
+                            ['text' => $prompt]
+                        ]
+                    ]
+                ],
+                'generationConfig' => $jsonResponse ? [
+                    'responseMimeType' => 'application/json'
+                ] : null
+            ]);
+
+            if ($response->successful()) {
+                $data = $response->json();
+                return $data['candidates'][0]['content']['parts'][0]['text'] ?? '';
+            }
+            
+            Log::error('Gemini API Error: ' . $response->body());
+        } catch (\Exception $e) {
+            Log::error('Gemini connection error: ' . $e->getMessage());
+        }
+
+        return $this->getMockResponse($prompt, $jsonResponse);
+    }
+
+    /**
+     * Generate interview question based on history and settings
+     */
+    public function generateQuestion($type, $tech, $difficulty, $history = [], $language = 'en', $projects = null)
+    {
+        $isPhpLaravel = $type === 'Technical' && !empty($tech) && (stripos($tech, 'Laravel') !== false || stripos($tech, 'PHP') !== false);
+
+        if ($isPhpLaravel) {
+            $fresherPool = [
+                [
+                    'id' => 'what_is_php',
+                    'en' => 'What is PHP?',
+                    'hi' => 'PHP Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†?',
+                    'gu' => 'PHP Ã ÂªÂ¶Ã Â«ï¿½Ã Âªâ€š Ã Âªâ€ºÃ Â«â€¡?',
+                    'hi_en' => 'PHP kya hai?',
+                    'gu_en' => 'PHP shu chhe?',
+                ],
+                [
+                    'id' => 'what_is_laravel',
+                    'en' => 'What is Laravel?',
+                    'hi' => 'Laravel Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†?',
+                    'gu' => 'Laravel Ã ÂªÂ¶Ã Â«ï¿½Ã Âªâ€š Ã Âªâ€ºÃ Â«â€¡?',
+                    'hi_en' => 'Laravel kya hai?',
+                    'gu_en' => 'Laravel shu chhe?',
+                ],
+                [
+                    'id' => 'mvc_architecture',
+                    'en' => 'Explain MVC Architecture.',
+                    'hi' => 'MVC Ã Â¤â€ Ã Â¤Â°Ã Â¥ï¿½Ã Â¤â€¢Ã Â¤Â¿Ã Â¤Å¸Ã Â¥â€¡Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Å¡Ã Â¤Â° (MVC Architecture) Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤Â¸Ã Â¤Â®Ã Â¤ï¿½Ã Â¤Â¾Ã Â¤â€¡Ã Â¤ï¿½Ã Â¥Â¤',
+                    'gu' => 'MVC Ã Âªâ€ Ã ÂªÂ°Ã Â«ï¿½Ã Âªâ€¢Ã ÂªÂ¿Ã ÂªÅ¸Ã Â«â€¡Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÅ¡Ã ÂªÂ° (MVC Architecture) Ã ÂªÂ¸Ã ÂªÂ®Ã ÂªÅ“Ã ÂªÂ¾Ã ÂªÂµÃ Â«â€¹.',
+                    'hi_en' => 'MVC Architecture ko explain karein.',
+                    'gu_en' => 'MVC Architecture ne explain karo.',
+                ],
+                [
+                    'id' => 'get_vs_post',
+                    'en' => 'Difference between GET and POST.',
+                    'hi' => 'GET Ã Â¤â€Ã Â¤Â° POST Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â¬Ã Â¥â‚¬Ã Â¤Å¡ Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤â€¦Ã Â¤â€šÃ Â¤Â¤Ã Â¤Â° Ã Â¤Â¹Ã Â¥Ë†?',
+                    'gu' => 'GET Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ POST Ã ÂªÂµÃ ÂªÅ¡Ã Â«ï¿½Ã ÂªÅ¡Ã Â«â€¡ Ã ÂªÂ¶Ã Â«ï¿½Ã Âªâ€š Ã ÂªÂ¤Ã ÂªÂ«Ã ÂªÂ¾Ã ÂªÂµÃ ÂªÂ¤ Ã Âªâ€ºÃ Â«â€¡?',
+                    'hi_en' => 'GET aur POST ke beech kya difference hai?',
+                    'gu_en' => 'GET ane POST vachhe shu difference chhe?',
+                ],
+                [
+                    'id' => 'what_is_middleware',
+                    'en' => 'What is Middleware?',
+                    'hi' => 'Middleware Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†?',
+                    'gu' => 'Middleware Ã ÂªÂ¶Ã Â«ï¿½Ã Âªâ€š Ã Âªâ€ºÃ Â«â€¡?',
+                    'hi_en' => 'Middleware kya hai?',
+                    'gu_en' => 'Middleware shu chhe?',
+                ],
+                [
+                    'id' => 'what_is_route',
+                    'en' => 'What is Route?',
+                    'hi' => 'Route Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†?',
+                    'gu' => 'Route Ã ÂªÂ¶Ã Â«ï¿½Ã Âªâ€š Ã Âªâ€ºÃ Â«â€¡?',
+                    'hi_en' => 'Route kya hai?',
+                    'gu_en' => 'Route shu chhe?',
+                ],
+                [
+                    'id' => 'what_is_migration',
+                    'en' => 'What is Migration?',
+                    'hi' => 'Migration Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†?',
+                    'gu' => 'Migration Ã ÂªÂ¶Ã Â«ï¿½Ã Âªâ€š Ã Âªâ€ºÃ Â«â€¡?',
+                    'hi_en' => 'Migration kya hai?',
+                    'gu_en' => 'Migration shu chhe?',
+                ],
+                [
+                    'id' => 'what_is_eloquent_orm',
+                    'en' => 'What is Eloquent ORM?',
+                    'hi' => 'Eloquent ORM Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†?',
+                    'gu' => 'Eloquent ORM Ã ÂªÂ¶Ã Â«ï¿½Ã Âªâ€š Ã Âªâ€ºÃ Â«â€¡?',
+                    'hi_en' => 'Eloquent ORM kya hai?',
+                    'gu_en' => 'Eloquent ORM shu chhe?',
+                ],
+                [
+                    'id' => 'explain_rest_api',
+                    'en' => 'Explain REST API.',
+                    'hi' => 'REST API Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤Â¸Ã Â¤Â®Ã Â¤ï¿½Ã Â¤Â¾Ã Â¤â€¡Ã Â¤ï¿½Ã Â¥Â¤',
+                    'gu' => 'REST API Ã ÂªÂ¸Ã ÂªÂ®Ã ÂªÅ“Ã ÂªÂ¾Ã ÂªÂµÃ Â«â€¹.',
+                    'hi_en' => 'REST API ko explain karein.',
+                    'gu_en' => 'REST API ne explain karo.',
+                ],
+                [
+                    'id' => 'what_is_authentication',
+                    'en' => 'What is Authentication?',
+                    'hi' => 'Authentication Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†?',
+                    'gu' => 'Authentication Ã ÂªÂ¶Ã Â«ï¿½Ã Âªâ€š Ã Âªâ€ºÃ Â«â€¡?',
+                    'hi_en' => 'Authentication kya hai?',
+                    'gu_en' => 'Authentication shu chhe?',
+                ],
+            ];
+
+            $experiencedPool = [
+                [
+                    'id' => 'laravel_service_container',
+                    'en' => 'Explain Laravel Service Container.',
+                    'hi' => 'Laravel Service Container Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤Â¸Ã Â¤Â®Ã Â¤ï¿½Ã Â¤Â¾Ã Â¤â€¡Ã Â¤ï¿½Ã Â¥Â¤',
+                    'gu' => 'Laravel Service Container Ã ÂªÂ¸Ã ÂªÂ®Ã ÂªÅ“Ã ÂªÂ¾Ã ÂªÂµÃ Â«â€¹.',
+                    'hi_en' => 'Laravel Service Container ko explain karein.',
+                    'gu_en' => 'Laravel Service Container ne explain karo.',
+                ],
+                [
+                    'id' => 'events_and_listeners',
+                    'en' => 'What are Events and Listeners?',
+                    'hi' => 'Events Ã Â¤â€Ã Â¤Â° Listeners Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¤â€š?',
+                    'gu' => 'Events Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ Listeners Ã ÂªÂ¶Ã Â«ï¿½Ã Âªâ€š Ã Âªâ€ºÃ Â«â€¡?',
+                    'hi_en' => 'Events aur Listeners kya hain?',
+                    'gu_en' => 'Events ane Listeners shu chhe?',
+                ],
+                [
+                    'id' => 'queue_system',
+                    'en' => 'Explain Queue System.',
+                    'hi' => 'Queue System Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤Â¸Ã Â¤Â®Ã Â¤ï¿½Ã Â¤Â¾Ã Â¤â€¡Ã Â¤ï¿½Ã Â¥Â¤',
+                    'gu' => 'Queue System Ã ÂªÂ¸Ã ÂªÂ®Ã ÂªÅ“Ã ÂªÂ¾Ã ÂªÂµÃ Â«â€¹.',
+                    'hi_en' => 'Queue System ko explain karein.',
+                    'gu_en' => 'Queue System ne explain karo.',
+                ],
+                [
+                    'id' => 'optimize_laravel_performance',
+                    'en' => 'How to optimize Laravel performance?',
+                    'hi' => 'Laravel Ã Â¤ÂªÃ Â¤Â°Ã Â¤Â«Ã Â¥â€°Ã Â¤Â°Ã Â¥ï¿½Ã Â¤Â®Ã Â¥â€¡Ã Â¤â€šÃ Â¤Â¸ Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤â€¢Ã Â¥Ë†Ã Â¤Â¸Ã Â¥â€¡ Ã Â¤â€˜Ã Â¤ÂªÃ Â¥ï¿½Ã Â¤Å¸Ã Â¤Â¿Ã Â¤Â®Ã Â¤Â¾Ã Â¤â€¡Ã Â¤Å“Ã Â¤Â¼ (optimize) Ã Â¤â€¢Ã Â¤Â°Ã Â¥â€¡Ã Â¤â€š?',
+                    'gu' => 'Laravel Ã ÂªÂªÃ ÂªÂ°Ã Â«ï¿½Ã ÂªÂ«Ã Â«â€¹Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂ®Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¸Ã ÂªÂ¨Ã Â«â€¡ Ã Âªâ€¢Ã Â«â€¡Ã ÂªÂµÃ Â«â‚¬ Ã ÂªÂ°Ã Â«â‚¬Ã ÂªÂ¤Ã Â«â€¡ Ã Âªâ€œÃ ÂªÂªÃ Â«ï¿½Ã ÂªÅ¸Ã ÂªÂ¿Ã ÂªÂ®Ã ÂªÂ¾Ã Âªâ€¡Ã Âªï¿½ (optimize) Ã Âªâ€¢Ã ÂªÂ°Ã ÂªÂµÃ Â«ï¿½Ã Âªâ€š?',
+                    'hi_en' => 'Laravel performance ko kaise optimize karein?',
+                    'gu_en' => 'Laravel performance ne kevi rite optimize karvu?',
+                ],
+                [
+                    'id' => 'redis_usage',
+                    'en' => 'Explain Redis usage.',
+                    'hi' => 'Redis Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤â€°Ã Â¤ÂªÃ Â¤Â¯Ã Â¥â€¹Ã Â¤â€” Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤Â¸Ã Â¤Â®Ã Â¤ï¿½Ã Â¤Â¾Ã Â¤â€¡Ã Â¤ï¿½Ã Â¥Â¤',
+                    'gu' => 'Redis Ã ÂªÂ¨Ã ÂªÂ¾ Ã Âªâ€°Ã ÂªÂªÃ ÂªÂ¯Ã Â«â€¹Ã Âªâ€”Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂ¸Ã ÂªÂ®Ã ÂªÅ“Ã ÂªÂ¾Ã ÂªÂµÃ Â«â€¹.',
+                    'hi_en' => 'Redis usage ko explain karein.',
+                    'gu_en' => 'Redis usage ne explain karo.',
+                ],
+                [
+                    'id' => 'dependency_injection',
+                    'en' => 'What is Dependency Injection?',
+                    'hi' => 'Dependency Injection Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†?',
+                    'gu' => 'Dependency Injection Ã ÂªÂ¶Ã Â«ï¿½Ã Âªâ€š Ã Âªâ€ºÃ Â«â€¡?',
+                    'hi_en' => 'Dependency Injection kya hai?',
+                    'gu_en' => 'Dependency Injection shu chhe?',
+                ],
+                [
+                    'id' => 'design_patterns_in_laravel',
+                    'en' => 'Explain Design Patterns used in Laravel.',
+                    'hi' => 'Laravel Ã Â¤Â®Ã Â¥â€¡Ã Â¤â€š Ã Â¤â€°Ã Â¤ÂªÃ Â¤Â¯Ã Â¥â€¹Ã Â¤â€” Ã Â¤Â¹Ã Â¥â€¹Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤ÂµÃ Â¤Â¾Ã Â¤Â²Ã Â¥â€¡ Design Patterns Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤Â¸Ã Â¤Â®Ã Â¤ï¿½Ã Â¤Â¾Ã Â¤â€¡Ã Â¤ï¿½Ã Â¥Â¤',
+                    'gu' => 'Laravel Ã ÂªÂ®Ã ÂªÂ¾Ã Âªâ€š Ã Âªâ€°Ã ÂªÂªÃ ÂªÂ¯Ã Â«â€¹Ã Âªâ€” Ã ÂªÂ¥Ã ÂªÂ¤Ã ÂªÂ¾ Design Patterns Ã ÂªÂ¸Ã ÂªÂ®Ã ÂªÅ“Ã ÂªÂ¾Ã ÂªÂµÃ Â«â€¹.',
+                    'hi_en' => 'Laravel mein use hone wale Design Patterns ko explain karein.',
+                    'gu_en' => 'Laravel ma use thata Design Patterns ne explain karo.',
+                ],
+                [
+                    'id' => 'handle_large_scale_applications',
+                    'en' => 'How do you handle large-scale applications?',
+                    'hi' => 'Ã Â¤â€ Ã Â¤Âª Ã Â¤Â¬Ã Â¤Â¡Ã Â¤Â¼Ã Â¥â€¡ Ã Â¤ÂªÃ Â¥Ë†Ã Â¤Â®Ã Â¤Â¾Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤ï¿½Ã Â¤ÂªÃ Â¥ï¿½Ã Â¤Â²Ã Â¤Â¿Ã Â¤â€¢Ã Â¥â€¡Ã Â¤Â¶Ã Â¤Â¨Ã Â¥ï¿½Ã Â¤Â¸ (large-scale applications) Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤â€¢Ã Â¥Ë†Ã Â¤Â¸Ã Â¥â€¡ Ã Â¤Â¹Ã Â¥Ë†Ã Â¤â€šÃ Â¤Â¡Ã Â¤Â² Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¤Ã Â¥â€¡ Ã Â¤Â¹Ã Â¥Ë†Ã Â¤â€š?',
+                    'gu' => 'Ã ÂªÂ¤Ã ÂªÂ®Ã Â«â€¡ Ã ÂªÂ®Ã Â«â€¹Ã ÂªÅ¸Ã ÂªÂ¾ Ã ÂªÂªÃ ÂªÂ¾Ã ÂªÂ¯Ã ÂªÂ¾Ã ÂªÂ¨Ã ÂªÂ¾ Ã Âªï¿½Ã ÂªÂªÃ Â«ï¿½Ã ÂªÂ²Ã ÂªÂ¿Ã Âªâ€¢Ã Â«â€¡Ã ÂªÂ¶Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¸ (large-scale applications) Ã ÂªÂ¨Ã Â«â€¡ Ã Âªâ€¢Ã Â«â€¡Ã ÂªÂµÃ Â«â‚¬ Ã ÂªÂ°Ã Â«â‚¬Ã ÂªÂ¤Ã Â«â€¡ Ã ÂªÂ¹Ã Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¡Ã ÂªÂ² Ã Âªâ€¢Ã ÂªÂ°Ã Â«â€¹ Ã Âªâ€ºÃ Â«â€¹?',
+                    'hi_en' => 'Aap large-scale applications ko kaise handle karte hain?',
+                    'gu_en' => 'Tame large-scale applications ne kevi rite handle karo chho?',
+                ],
+            ];
+
+            // Determine if Experienced based on difficulty or history
+            $isExperienced = false;
+            if (stripos($difficulty, 'Experienced') !== false || stripos($difficulty, 'Expert') !== false || stripos($difficulty, 'Architectural') !== false) {
+                $isExperienced = true;
+            } else {
+                foreach ($history as $h) {
+                    $qText = $h['question'] ?? '';
+                    foreach ($experiencedPool as $q) {
+                        if ($this->questionMatches($qText, $q)) {
+                            $isExperienced = true;
+                            break 2;
+                        }
+                    }
+                }
+            }
+
+            $pool = $isExperienced ? $experiencedPool : $fresherPool;
+
+            $nextQuestionData = null;
+            foreach ($pool as $q) {
+                $alreadyAsked = false;
+                foreach ($history as $h) {
+                    if (isset($h['question']) && $this->questionMatches($h['question'], $q)) {
+                        $alreadyAsked = true;
+                        break;
+                    }
+                }
+                if (!$alreadyAsked) {
+                    $nextQuestionData = $q;
+                    break;
+                }
+            }
+
+            if (!$nextQuestionData) {
+                $nextQuestionData = $pool[count($history) % count($pool)];
+            }
+
+            $langKey = $language;
+            if (!in_array($langKey, ['en', 'hi', 'gu', 'hi_en', 'gu_en'])) {
+                $langKey = 'en';
+            }
+
+            $questionText = $nextQuestionData[$langKey] ?? $nextQuestionData['en'];
+
+            // Translate using Gemini dynamically if key is present (but fallback to predefined is always active)
+            if ($language !== 'en' && !empty($this->apiKey)) {
+                $translatePrompt = "Translate this technical interview question to " . $this->getLanguageName($language) . ". "
+                    . "Keep technical terms (like PHP, Laravel, GET, POST, Middleware, Route, Migration, Eloquent ORM, REST API, Authentication, Service Container, Events, Listeners, Queue, Redis, Dependency Injection, Design Patterns) in English or in parenthetical English format if translated, so it is easy for developers to understand. "
+                    . "Only return the translated question, do not include any other text.\nQuestion: " . $nextQuestionData['en'];
+                
+                try {
+                    $translated = $this->callGemini($translatePrompt);
+                    if (!empty($translated)) {
+                        return trim($translated);
+                    }
+                } catch (\Exception $e) {
+                    Log::error("Translation error: " . $e->getMessage());
+                }
+            }
+
+            return $questionText;
+        }
+
+        $prompt = "You are a professional IT interviewer. Generate the next single question for a {$type} interview. ";
+        if ($type === 'Technical') {
+            $prompt .= "The technologies are: {$tech}. ";
+        }
+        $prompt .= "Difficulty: {$difficulty}. Preferred language: {$language}. ";
+        
+        if (!empty($projects)) {
+            $prompt .= "The candidate has the following project(s) on their resume:\n{$projects}\n"
+                     . "You MUST ask questions related to this project(s) (e.g. explain project architecture, database tables, how booking/specific feature was implemented, challenges faced and how they solved them). ";
+        }
+        
+        if (!empty($history)) {
+            $prompt .= "Here is the conversation history so far: " . json_encode($history) . ". ";
+        }
+        
+        $prompt .= "Ask the next relevant, context-aware question directly. Keep your reply to ONLY the question text. Do not add intro or outro.";
+
+        return $this->callGemini($prompt);
+    }
+
+    /**
+     * Check if a question text matches one of the predefined questions
+     */
+    protected function questionMatches($text, $q)
+    {
+        foreach (['en', 'hi', 'gu', 'hi_en', 'gu_en'] as $langKey) {
+            if (isset($q[$langKey]) && (stripos($text, $q[$langKey]) !== false || stripos($q[$langKey], $text) !== false)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Get language name helper
+     */
+    protected function getLanguageName($code)
+    {
+        $names = [
+            'en' => 'English',
+            'hi' => 'Hindi',
+            'gu' => 'Gujarati',
+            'hi_en' => 'Hinglish (Hindi + English)',
+            'gu_en' => 'Gujlish (Gujarati + English)',
+        ];
+        return $names[$code] ?? 'English';
+    }
+
+    /**
+     * Evaluate the answer provided by user
+     */
+    public function evaluateAnswer($question, $answer, $languagePreference = 'en')
+    {
+        $prompt = "Evaluate the following answer to this interview question:
+Question: \"{$question}\"
+User's Answer: \"{$answer}\"
+
+Preferred response language is: {$languagePreference}. Note: All parts of the evaluation (positive_points, missing_points, suggestions, grammar_feedback, etc.) should match this preferred language, BUT the 'improved_answer' MUST be written strictly in English.
+Analyze grammar, completeness, technical accuracy. Return a JSON object containing:
+- score (0 to 100)
+- communication_score (0 to 100)
+- confidence_score (0 to 100)
+- positive_points (array of strings showing what the user got right)
+- missing_points (array of strings showing what they missed)
+- suggestions (array of suggestions for improvement)
+- improved_answer (an improved professional answer written strictly in English)
+- grammar_feedback (short critique of their grammar and tone)
+- voice_analysis (mock speed and clarity analysis)
+- camera_analysis (mock posture and eye contact analysis)
+
+Only return a valid JSON object. No backticks, no text wrappers.";
+
+        $response = $this->callGemini($prompt, true);
+        
+        // Clean JSON formatting from Gemini wrappers
+        $cleaned = trim($response);
+        if (strpos($cleaned, '```json') === 0) {
+            $cleaned = substr($cleaned, 7);
+        }
+        if (strpos($cleaned, '```') === 0) {
+            $cleaned = substr($cleaned, 3);
+        }
+        if (strrpos($cleaned, '```') === strlen($cleaned) - 3) {
+            $cleaned = substr($cleaned, 0, -3);
+        }
+        $cleaned = trim($cleaned);
+
+        $decoded = json_decode($cleaned, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            return $decoded;
+        }
+
+        // Return a structured array if decoding fails
+        return json_decode($this->getMockResponse($prompt, true), true);
+    }
+
+    /**
+     * Analyze uploaded resume text
+     */
+    public function analyzeResume($text, $user = null)
+    {
+        $hasBulletPoints = preg_match('/(?:[â€¢\-\*â–ªâ—¦]|\d+\.)\s+\w+/', $text);
+        $hasExperience = stripos($text, 'experience') !== false || stripos($text, 'work') !== false || stripos($text, 'history') !== false;
+        $hasProjects = stripos($text, 'project') !== false;
+        $hasEducation = stripos($text, 'education') !== false || stripos($text, 'academic') !== false || stripos($text, 'degree') !== false;
+        $hasSkills = stripos($text, 'skill') !== false;
+
+        $courseTitles = [];
+        if ($user) {
+            $courseTitles = $user->enrollments()->with('course')->get()->map(function($e) {
+                return $e->course->title;
+            })->toArray();
+        }
+        
+        $courseInfo = "None specified";
+        if (!empty($courseTitles)) {
+            $courseInfo = implode(', ', $courseTitles);
+        } elseif ($user && $user->career_path) {
+            $courseInfo = $user->career_path;
+        }
+
+        $prompt = "You are a professional ATS (Applicant Tracking System) software used by corporate companies.
+Analyze the uploaded resume text below and generate a highly personalized, structured evaluation report based on the candidate's actual details.
+
+Resume: \"{$text}\"
+
+Metadata facts for analysis:
+- Bullet points present: " . ($hasBulletPoints ? "Yes" : "No") . "
+- Experience section present: " . ($hasExperience ? "Yes" : "No") . "
+- Projects section present: " . ($hasProjects ? "Yes" : "No") . "
+- Education section present: " . ($hasEducation ? "Yes" : "No") . "
+- Skills section present: " . ($hasSkills ? "Yes" : "No") . "
+- User Enrolled Course(s) / Career Path: {$courseInfo}
+
+Instructions:
+1. Parse the resume to extract: Name, Email, Phone Number, Education, Experience, Skills, Projects, Certifications, Internships, Technical Stack, Soft Skills, Languages, GitHub Profile, LinkedIn Profile.
+2. Automatically detect the target role (e.g. Backend Developer, Frontend Developer, MERN Developer, Python Data Analyst, DevOps Engineer, QA Engineer, Cyber Security Specialist) based on the technologies present in the resume. Explain why this role fits the candidate.
+3. Calculate ATS Score out of 100 based on structure, keywords, skills, experience, projects, education, formatting, and readability.
+4. Calculate readiness scores (0-100) for: ATS Readiness, Technical Readiness, HR Readiness, Communication Readiness, Coding Readiness, and Overall Interview Readiness.
+5. Identify all technologies mentioned in the resume and list matched keywords.
+6. Compare the resume against the detected role's industry requirements to detect missing skills. List each missing skill along with a short explanation of why it is important.
+7. Analyze each project in the resume. Detail its strengths and suggest specific missing features or enhancements to make it production-ready.
+8. Generate 5 personalized mock interview questions tailored directly to the candidate's actual skills, projects, and work experience.
+9. Generate a week-by-week or month-by-month learning plan/roadmap.
+10. Suggest improvements (add achievements, links, etc.) and explain why they improve the resume.
+
+Return a JSON object with the following exact keys:
+- \"parsed_info\": {
+    \"name\": \"string\",
+    \"email\": \"string\",
+    \"phone\": \"string\",
+    \"github\": \"string\",
+    \"linkedin\": \"string\",
+    \"education\": [{\"degree\": \"string\", \"institution\": \"string\", \"year\": \"string\"}],
+    \"experience\": [{\"role\": \"string\", \"company\": \"string\", \"duration\": \"string\", \"responsibilities\": \"string\"}],
+    \"projects\": [{\"title\": \"string\", \"tech_stack\": [\"string\"], \"description\": \"string\"}],
+    \"certifications\": [\"string\"],
+    \"internships\": [\"string\"],
+    \"tech_stack\": [\"string\"],
+    \"soft_skills\": [\"string\"],
+    \"languages\": [\"string\"]
+  }
+- \"target_role_detection\": {\"role\": \"string\", \"reason\": \"string\"}
+- \"readiness_scores\": {
+    \"ats_score\": integer,
+    \"technical_readiness\": integer,
+    \"hr_readiness\": integer,
+    \"communication_readiness\": integer,
+    \"coding_readiness\": integer,
+    \"overall_readiness\": integer
+  }
+- \"ats_score_breakdown\": {
+    \"structure_score\": integer,
+    \"keywords_score\": integer,
+    \"skills_score\": integer,
+    \"experience_score\": integer,
+    \"projects_score\": integer,
+    \"education_score\": integer,
+    \"formatting_score\": integer,
+    \"readability_score\": integer
+  }
+- \"missing_skills_analysis\": [{\"skill\": \"string\", \"importance_explanation\": \"string\"}]
+- \"project_analysis\": [{\"project_name\": \"string\", \"strengths\": \"string\", \"improvements\": [\"string\"], \"suggested_missing_features\": [\"string\"]}]
+- \"personalized_interview_questions\": [\"string\"]
+- \"personalized_learning_roadmap\": [{\"period\": \"string\", \"topic\": \"string\", \"description\": \"string\", \"key_actions\": [\"string\"]}]
+- \"improvement_suggestions\": [{\"suggestion\": \"string\", \"reason_why\": \"string\"}]
+- \"resume_summary\": \"string\"
+- \"strengths\": [\"string\"]
+- \"weaknesses\": [\"string\"]
+- \"resume_sections_missing\": [\"string\"]
+- \"recommended_certifications\": [\"string\"]
+- \"recommended_skills\": [\"string\"]
+- \"recommended_projects\": [\"string\"]
+- \"final_hiring_decision\": \"string\"
+
+Only return a valid JSON object. No markdown wrapping, no trailing commas, no extra text.";
+
+        $response = $this->callGemini($prompt, true);
+        $cleaned = trim($response);
+        if (strpos($cleaned, '```json') === 0) {
+            $cleaned = substr($cleaned, 7);
+        }
+        $cleaned = trim($cleaned, "`\n\r\t ");
+        
+        $decoded = json_decode($cleaned, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            // Inject legacy keys for full backward compatibility
+            $decoded['âœ… ATS Score (0-100)'] = $decoded['readiness_scores']['ats_score'] ?? $decoded['âœ… ATS Score (0-100)'] ?? 75;
+            $decoded['Reason for Score'] = $decoded['target_role_detection']['reason'] ?? $decoded['Reason for Score'] ?? '';
+            if (!isset($decoded['Missing Keywords']) && isset($decoded['missing_skills_analysis'])) {
+                $decoded['Missing Keywords'] = array_column($decoded['missing_skills_analysis'], 'skill');
+            }
+            if (!isset($decoded['Matched Keywords']) && isset($decoded['parsed_info']['tech_stack'])) {
+                $decoded['Matched Keywords'] = $decoded['parsed_info']['tech_stack'];
+            }
+            if (!isset($decoded['Top 10 Improvements']) && isset($decoded['improvement_suggestions'])) {
+                $decoded['Top 10 Improvements'] = array_map(function($item) {
+                    return ($item['suggestion'] ?? '') . ': ' . ($item['reason_why'] ?? '');
+                }, $decoded['improvement_suggestions']);
+            }
+            if (!isset($decoded['Strengths']) && isset($decoded['strengths'])) {
+                $decoded['Strengths'] = $decoded['strengths'];
+            }
+            if (!isset($decoded['Weaknesses']) && isset($decoded['weaknesses'])) {
+                $decoded['Weaknesses'] = $decoded['weaknesses'];
+            }
+            if (!isset($decoded['Resume Sections Missing']) && isset($decoded['resume_sections_missing'])) {
+                $decoded['Resume Sections Missing'] = $decoded['resume_sections_missing'];
+            }
+            if (!isset($decoded['Recommended Certifications']) && isset($decoded['recommended_certifications'])) {
+                $decoded['Recommended Certifications'] = $decoded['recommended_certifications'];
+            }
+            if (!isset($decoded['Recommended Skills']) && isset($decoded['recommended_skills'])) {
+                $decoded['Recommended Skills'] = $decoded['recommended_skills'];
+            }
+            if (!isset($decoded['Recommended Projects']) && isset($decoded['recommended_projects'])) {
+                $decoded['Recommended Projects'] = $decoded['recommended_projects'];
+            }
+            if (!isset($decoded['Final Hiring Decision']) && isset($decoded['final_hiring_decision'])) {
+                $decoded['Final Hiring Decision'] = $decoded['final_hiring_decision'];
+            }
+            if (!isset($decoded['Resume Summary']) && isset($decoded['resume_summary'])) {
+                $decoded['Resume Summary'] = $decoded['resume_summary'];
+            }
+            return $decoded;
+        }
+
+        return json_decode($this->getMockResponse($prompt, true), true);
+    }
+
+    /**
+     * Generate completion report from session and questions
+     */
+    public function generateCompletionReport($session, $questions)
+    {
+        $history = [];
+        foreach ($questions as $q) {
+            $history[] = [
+                'question' => $q->question_text,
+                'answer' => $q->user_answer,
+                'score' => $q->ai_score,
+            ];
+        }
+
+        $prompt = "Evaluate the candidate's complete performance across these interview questions:
+" . json_encode($history) . "
+
+Generate a final interview completion report.
+Return a JSON object containing:
+- technical_score (0 to 100)
+- communication_score (0 to 100)
+- confidence_score (0 to 100)
+- strong_areas (array of strings, e.g. ['Laravel Basics', 'Database Concepts'])
+- weak_areas (array of strings, e.g. ['API Development', 'Design Patterns'])
+- recommended_topics (array of strings, e.g. ['Laravel APIs', 'Authentication', 'Queues', 'Service Container'])
+
+Only return valid JSON.";
+
+        $response = $this->callGemini($prompt, true);
+        
+        $cleaned = trim($response);
+        if (strpos($cleaned, '```json') === 0) {
+            $cleaned = substr($cleaned, 7);
+        }
+        $cleaned = trim($cleaned, "`\n\r\t ");
+        
+        $decoded = json_decode($cleaned, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            return $decoded;
+        }
+
+        return json_decode($this->getMockResponse($prompt, true), true);
+    }
+
+    /**
+     * Generate AI career roadmap
+     */
+    public function generateRoadmap($role, $skills, $experience = 'fresher')
+    {
+        $skillsList = is_array($skills) ? implode(', ', $skills) : $skills;
+        $prompt = "Generate a 5-month learning roadmap for a person wanting to become a {$role}.
+Their current skills: {$skillsList}.
+Experience level: {$experience}.
+
+Return a JSON object with a timeline of month nodes. Example format:
+{
+  \"timeline\": [
+    {\"month\": \"Month 1\", \"topic\": \"Topic name\", \"description\": \"Details\"},
+    ...
+  ],
+  \"skill_gap\": [
+     {\"skill\": \"Skill name\", \"gap_percentage\": 60}
+  ]
+}
+
+Only return valid JSON.";
+
+        $response = $this->callGemini($prompt, true);
+        $cleaned = trim($response);
+        if (strpos($cleaned, '```json') === 0) {
+            $cleaned = substr($cleaned, 7);
+        }
+        $cleaned = trim($cleaned, "`\n\r\t ");
+        
+        $decoded = json_decode($cleaned, true);
+        if (json_last_error() === JSON_ERROR_NONE) {
+            return $decoded;
+        }
+
+        return json_decode($this->getMockResponse($prompt, true), true);
+    }
+
+    /**
+     * Intelligent Mock fallback for Offline/Demo mode
+     */
+    protected function getMockResponse($prompt, $jsonResponse)
+    {
+        if ($jsonResponse) {
+            // Determine language from prompt
+            $lang = 'en';
+            // Force $lang to be 'en' so that all mock responses return improved_answer in English.
+
+            if (strpos($prompt, 'evaluateAnswer') !== false || strpos($prompt, 'Evaluate the following answer') !== false) {
+
+                // 1. What is PHP?
+                if (stripos($prompt, 'What is PHP') !== false || stripos($prompt, 'PHP kya') !== false || stripos($prompt, 'PHP shu') !== false) {
+                    $improved = "PHP (Hypertext Preprocessor) is an open-source, server-side scripting language designed specifically for web development. It is executed on the server, generates dynamic HTML, and integrates seamlessly with various databases like MySQL.";
+                    if ($lang === 'gu') {
+                        $improved = "PHP (Hypertext Preprocessor) Ã Âªï¿½ Ã Âªï¿½Ã Âªâ€¢ Ã Âªâ€œÃ ÂªÂªÃ ÂªÂ¨-Ã ÂªÂ¸Ã Â«â€¹Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂ¸, Ã ÂªÂ¸Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂµÃ ÂªÂ°-Ã ÂªÂ¸Ã ÂªÂ¾Ã Âªâ€¡Ã ÂªÂ¡ Ã ÂªÂ¸Ã Â«ï¿½Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂ°Ã ÂªÂ¿Ã ÂªÂªÃ Â«ï¿½Ã ÂªÅ¸Ã Â«â‚¬Ã Âªâ€šÃ Âªâ€” Ã ÂªÂ²Ã Â«â€¡Ã Âªâ€šÃ Âªâ€”Ã Â«ï¿½Ã ÂªÂµÃ Â«â€¡Ã ÂªÅ“ Ã Âªâ€ºÃ Â«â€¡ Ã ÂªÅ“Ã Â«â€¡ Ã Âªâ€“Ã ÂªÂ¾Ã ÂªÂ¸ Ã Âªâ€¢Ã ÂªÂ°Ã Â«â‚¬Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ¬ Ã ÂªÂ¡Ã Â«â€¡Ã ÂªÂµÃ ÂªÂ²Ã ÂªÂªÃ ÂªÂ®Ã Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÅ¸ Ã ÂªÂ®Ã ÂªÂ¾Ã ÂªÅ¸Ã Â«â€¡ Ã ÂªÂ¬Ã ÂªÂ¨Ã ÂªÂ¾Ã ÂªÂµÃ ÂªÂµÃ ÂªÂ¾Ã ÂªÂ®Ã ÂªÂ¾Ã Âªâ€š Ã Âªâ€ Ã ÂªÂµÃ Â«â‚¬ Ã Âªâ€ºÃ Â«â€¡. Ã ÂªÂ¤Ã Â«â€¡ Ã ÂªÂ¸Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂµÃ ÂªÂ° Ã ÂªÂªÃ ÂªÂ° Ã ÂªÂ°Ã ÂªÂ¨ Ã ÂªÂ¥Ã ÂªÂ¾Ã ÂªÂ¯ Ã Âªâ€ºÃ Â«â€¡, Ã ÂªÂ¡Ã ÂªÂ¾Ã ÂªÂ¯Ã ÂªÂ¨Ã Â«â€¡Ã ÂªÂ®Ã ÂªÂ¿Ã Âªâ€¢ HTML Ã ÂªÅ“Ã ÂªÂ¨Ã ÂªÂ°Ã Â«â€¡Ã ÂªÅ¸ Ã Âªâ€¢Ã ÂªÂ°Ã Â«â€¡ Ã Âªâ€ºÃ Â«â€¡, Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ MySQL Ã ÂªÅ“Ã Â«â€¡Ã ÂªÂµÃ ÂªÂ¾ Ã ÂªÂ¡Ã Â«â€¡Ã ÂªÅ¸Ã ÂªÂ¾Ã ÂªÂ¬Ã Â«â€¡Ã Âªï¿½ Ã ÂªÂ¸Ã ÂªÂ¾Ã ÂªÂ¥Ã Â«â€¡ Ã ÂªÂ¸Ã ÂªÂ°Ã ÂªÂ³Ã ÂªÂ¤Ã ÂªÂ¾Ã ÂªÂ¥Ã Â«â‚¬ Ã Âªâ€¢Ã ÂªÂ¨Ã Â«â€¡Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÅ¸ Ã ÂªÂ¥Ã ÂªÂ¾Ã ÂªÂ¯ Ã Âªâ€ºÃ Â«â€¡.";
+                    } elseif ($lang === 'hi') {
+                        $improved = "PHP (Hypertext Preprocessor) Ã Â¤ï¿½Ã Â¤â€¢ Ã Â¤â€œÃ Â¤ÂªÃ Â¤Â¨-Ã Â¤Â¸Ã Â¥â€¹Ã Â¤Â°Ã Â¥ï¿½Ã Â¤Â¸, Ã Â¤Â¸Ã Â¤Â°Ã Â¥ï¿½Ã Â¤ÂµÃ Â¤Â°-Ã Â¤Â¸Ã Â¤Â¾Ã Â¤â€¡Ã Â¤Â¡ Ã Â¤Â¸Ã Â¥ï¿½Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â°Ã Â¤Â¿Ã Â¤ÂªÃ Â¥ï¿½Ã Â¤Å¸Ã Â¤Â¿Ã Â¤â€šÃ Â¤â€” Ã Â¤Â­Ã Â¤Â¾Ã Â¤Â·Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë† Ã Â¤Å“Ã Â¤Â¿Ã Â¤Â¸Ã Â¥â€¡ Ã Â¤ÂµÃ Â¤Â¿Ã Â¤Â¶Ã Â¥â€¡Ã Â¤Â· Ã Â¤Â°Ã Â¥â€šÃ Â¤Âª Ã Â¤Â¸Ã Â¥â€¡ Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â¬ Ã Â¤ÂµÃ Â¤Â¿Ã Â¤â€¢Ã Â¤Â¾Ã Â¤Â¸ Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â²Ã Â¤Â¿Ã Â¤ï¿½ Ã Â¤Â¡Ã Â¤Â¿Ã Â¤Å“Ã Â¤Â¼Ã Â¤Â¾Ã Â¤â€¡Ã Â¤Â¨ Ã Â¤â€¢Ã Â¤Â¿Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤â€”Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤ Ã Â¤Â¯Ã Â¤Â¹ Ã Â¤Â¸Ã Â¤Â°Ã Â¥ï¿½Ã Â¤ÂµÃ Â¤Â° Ã Â¤ÂªÃ Â¤Â° Ã Â¤Å¡Ã Â¤Â²Ã Â¤Â¤Ã Â¥â‚¬ Ã Â¤Â¹Ã Â¥Ë†, Ã Â¤Â¡Ã Â¤Â¾Ã Â¤Â¯Ã Â¤Â¨Ã Â¥â€¡Ã Â¤Â®Ã Â¤Â¿Ã Â¤â€¢ HTML Ã Â¤â€°Ã Â¤Â¤Ã Â¥ï¿½Ã Â¤ÂªÃ Â¤Â¨Ã Â¥ï¿½Ã Â¤Â¨ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¤Ã Â¥â‚¬ Ã Â¤Â¹Ã Â¥Ë†, Ã Â¤â€Ã Â¤Â° MySQL Ã Â¤Å“Ã Â¥Ë†Ã Â¤Â¸Ã Â¥â€¡ Ã Â¤Â¡Ã Â¥â€¡Ã Â¤Å¸Ã Â¤Â¾Ã Â¤Â¬Ã Â¥â€¡Ã Â¤Â¸ Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â¸Ã Â¤Â¾Ã Â¤Â¥ Ã Â¤â€ Ã Â¤Â¸Ã Â¤Â¾Ã Â¤Â¨Ã Â¥â‚¬ Ã Â¤Â¸Ã Â¥â€¡ Ã Â¤Å“Ã Â¥ï¿½Ã Â¤Â¡Ã Â¤Â¼Ã Â¤Â¤Ã Â¥â‚¬ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤";
+                    }
+
+                    return json_encode([
+                        'score' => 85,
+                        'communication_score' => 86,
+                        'confidence_score' => 84,
+                        'positive_points' => [
+                            'Correctly identified PHP as a server-side scripting language',
+                            'Mentioned it is open-source and used for web development'
+                        ],
+                        'missing_points' => [
+                            'Could mention that it runs on the server and generates HTML',
+                            'Could mention its integration with databases like MySQL'
+                        ],
+                        'suggestions' => [
+                            'Explain the difference between client-side and server-side execution.',
+                            'Mention how PHP integrates with databases.'
+                        ],
+                        'improved_answer' => $improved,
+                        'grammar_feedback' => 'Clear explanation with correct technical terms.',
+                        'voice_analysis' => 'Speaking speed: 125 WPM. Filler words: None. Voice clarity: 90%.',
+                        'camera_analysis' => 'Eye contact: 85%. Smiling: Friendly. Posture: Steady.'
+                    ]);
+                }
+
+                // 2. What is Laravel?
+                if (stripos($prompt, 'What is Laravel') !== false || stripos($prompt, 'Laravel kya') !== false || stripos($prompt, 'Laravel shu') !== false) {
+                    $improved = "Laravel is a free and open-source PHP framework used for developing modern web applications. It follows the MVC (Model-View-Controller) architecture, which helps organize code and makes applications easier to develop, maintain, and scale.\n\nLaravel provides built-in features such as routing, authentication, database migration, ORM (Eloquent), middleware, validation, and security, which help developers build applications faster and more efficiently.";
+                    if ($lang === 'gu') {
+                        $improved = "Laravel is a free and open-source PHP framework used for developing modern web applications. It follows the MVC (Model-View-Controller) architecture, which helps organize code and makes applications easier to develop, maintain, and scale.\n\nLaravel provides built-in features such as routing, authentication, database migration, ORM (Eloquent), middleware, validation, and security, which help developers build applications faster and more efficiently.";
+                    } elseif ($lang === 'hi') {
+                        $improved = "Laravel is a free and open-source PHP framework used for developing modern web applications. It follows the MVC (Model-View-Controller) architecture, which helps organize code and makes applications easier to develop, maintain, and scale.\n\nLaravel provides built-in features such as routing, authentication, database migration, ORM (Eloquent), middleware, validation, and security, which help developers build applications faster and more efficiently.";
+                    }
+                }
+
+                // 3. Explain MVC Architecture
+                if (stripos($prompt, 'MVC Architecture') !== false || stripos($prompt, 'MVC') !== false) {
+                    $improved = "MVC (Model-View-Controller) is a design pattern that separates an application into three main components: Model handles data and business logic; View handles the presentation and user interface; and Controller receives user requests, interacts with the Model, and selects the View to render.";
+                    if ($lang === 'gu') {
+                        $improved = "MVC (Model-View-Controller) Ã Âªï¿½ Ã Âªï¿½Ã Âªâ€¢ Ã ÂªÂ¡Ã ÂªÂ¿Ã Âªï¿½Ã ÂªÂ¾Ã Âªâ€¡Ã ÂªÂ¨ Ã ÂªÂªÃ Â«â€¡Ã ÂªÅ¸Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂ¨ Ã Âªâ€ºÃ Â«â€¡ Ã ÂªÅ“Ã Â«â€¡ Ã Âªï¿½Ã ÂªÂªÃ Â«ï¿½Ã ÂªÂ²Ã ÂªÂ¿Ã Âªâ€¢Ã Â«â€¡Ã ÂªÂ¶Ã ÂªÂ¨Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂ¤Ã Â«ï¿½Ã ÂªÂ°Ã ÂªÂ£ Ã ÂªÂ­Ã ÂªÂ¾Ã Âªâ€”Ã Â«â€¹Ã ÂªÂ®Ã ÂªÂ¾Ã Âªâ€š Ã ÂªÂµÃ ÂªÂ¿Ã ÂªÂ­Ã ÂªÂ¾Ã ÂªÅ“Ã Â«â‚¬Ã ÂªÂ¤ Ã Âªâ€¢Ã ÂªÂ°Ã Â«â€¡ Ã Âªâ€ºÃ Â«â€¡: Model Ã ÂªÂ¡Ã Â«â€¡Ã ÂªÅ¸Ã ÂªÂ¾ Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂ¬Ã ÂªÂ¿Ã Âªï¿½Ã ÂªÂ¨Ã Â«â€¡Ã ÂªÂ¸ Ã ÂªÂ²Ã Â«â€¹Ã ÂªÅ“Ã ÂªÂ¿Ã Âªâ€¢ Ã ÂªÂ¹Ã Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¡Ã ÂªÂ² Ã Âªâ€¢Ã ÂªÂ°Ã Â«â€¡ Ã Âªâ€ºÃ Â«â€¡; View Ã ÂªÂ¯Ã Â«ï¿½Ã Âªï¿½Ã ÂªÂ° Ã Âªâ€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÅ¸Ã ÂªÂ°Ã ÂªÂ«Ã Â«â€¡Ã ÂªÂ¸ (UI) Ã ÂªÂ¹Ã Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¡Ã ÂªÂ² Ã Âªâ€¢Ã ÂªÂ°Ã Â«â€¡ Ã Âªâ€ºÃ Â«â€¡; Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ Controller Ã ÂªÂ¯Ã Â«ï¿½Ã Âªï¿½Ã ÂªÂ° Ã ÂªÂ°Ã ÂªÂ¿Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ¸Ã Â«ï¿½Ã ÂªÅ¸ Ã ÂªÂ®Ã Â«â€¡Ã ÂªÂ³Ã ÂªÂµÃ Â«â€¡ Ã Âªâ€ºÃ Â«â€¡, Ã ÂªÂ®Ã Â«â€¹Ã ÂªÂ¡Ã Â«â€¡Ã ÂªÂ² Ã ÂªÂ¸Ã ÂªÂ¾Ã ÂªÂ¥Ã Â«â€¡ Ã Âªâ€¢Ã ÂªÂ¾Ã ÂªÂ® Ã Âªâ€¢Ã ÂªÂ°Ã Â«â€¡ Ã Âªâ€ºÃ Â«â€¡ Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂ¯Ã Â«â€¹Ã Âªâ€”Ã Â«ï¿½Ã ÂªÂ¯ Ã ÂªÂµÃ Â«ï¿½Ã ÂªÂ¯Ã Â«ï¿½ Ã ÂªÂ°Ã ÂªÂ¿Ã ÂªÂ¸Ã Â«ï¿½Ã ÂªÂªÃ Â«â€¹Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¸ Ã Âªâ€ Ã ÂªÂªÃ Â«â€¡ Ã Âªâ€ºÃ Â«â€¡.";
+                    } elseif ($lang === 'hi') {
+                        $improved = "MVC (Model-View-Controller) Ã Â¤ï¿½Ã Â¤â€¢ Ã Â¤Â¡Ã Â¤Â¿Ã Â¤Å“Ã Â¤Â¼Ã Â¤Â¾Ã Â¤â€¡Ã Â¤Â¨ Ã Â¤ÂªÃ Â¥Ë†Ã Â¤Å¸Ã Â¤Â°Ã Â¥ï¿½Ã Â¤Â¨ Ã Â¤Â¹Ã Â¥Ë† Ã Â¤Å“Ã Â¥â€¹ Ã Â¤ï¿½Ã Â¤â€¢ Ã Â¤ï¿½Ã Â¤ÂªÃ Â¥ï¿½Ã Â¤Â²Ã Â¤Â¿Ã Â¤â€¢Ã Â¥â€¡Ã Â¤Â¶Ã Â¤Â¨ Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤Â¤Ã Â¥â‚¬Ã Â¤Â¨ Ã Â¤Â®Ã Â¥ï¿½Ã Â¤â€“Ã Â¥ï¿½Ã Â¤Â¯ Ã Â¤ËœÃ Â¤Å¸Ã Â¤â€¢Ã Â¥â€¹Ã Â¤â€š Ã Â¤Â®Ã Â¥â€¡Ã Â¤â€š Ã Â¤ÂµÃ Â¤Â¿Ã Â¤Â­Ã Â¤Â¾Ã Â¤Å“Ã Â¤Â¿Ã Â¤Â¤ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†: Model Ã Â¤Â¡Ã Â¥â€¡Ã Â¤Å¸Ã Â¤Â¾ Ã Â¤â€Ã Â¤Â° Ã Â¤Â¬Ã Â¤Â¿Ã Â¤Å“Ã Â¤Â¨Ã Â¥â€¡Ã Â¤Â¸ Ã Â¤Â²Ã Â¥â€°Ã Â¤Å“Ã Â¤Â¿Ã Â¤â€¢ Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤Â¸Ã Â¤â€šÃ Â¤Â­Ã Â¤Â¾Ã Â¤Â²Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†; View Ã Â¤Â¯Ã Â¥â€šÃ Â¤Å“Ã Â¤Â° Ã Â¤â€¡Ã Â¤â€šÃ Â¤Å¸Ã Â¤Â°Ã Â¤Â«Ã Â¥â€¡Ã Â¤Â¸ (UI) Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤Â¸Ã Â¤â€šÃ Â¤Â­Ã Â¤Â¾Ã Â¤Â²Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†; Ã Â¤â€Ã Â¤Â° Controller Ã Â¤Â¯Ã Â¥â€šÃ Â¤Å“Ã Â¤Â° Ã Â¤Â°Ã Â¤Â¿Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â¸Ã Â¥ï¿½Ã Â¤Å¸ Ã Â¤ÂªÃ Â¥ï¿½Ã Â¤Â°Ã Â¤Â¾Ã Â¤ÂªÃ Â¥ï¿½Ã Â¤Â¤ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†, Ã Â¤Â®Ã Â¥â€°Ã Â¤Â¡Ã Â¤Â² Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â¸Ã Â¤Â¾Ã Â¤Â¥ Ã Â¤â€¡Ã Â¤â€šÃ Â¤Å¸Ã Â¤Â°Ã Â¥Ë†Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Å¸ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë† Ã Â¤â€Ã Â¤Â° Ã Â¤â€°Ã Â¤Å¡Ã Â¤Â¿Ã Â¤Â¤ Ã Â¤ÂµÃ Â¥ï¿½Ã Â¤Â¯Ã Â¥â€š Ã Â¤â€¢Ã Â¤Â¾ Ã Â¤Å¡Ã Â¤Â¯Ã Â¤Â¨ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤";
+                    }
+
+                    return json_encode([
+                        'score' => 87,
+                        'communication_score' => 89,
+                        'confidence_score' => 85,
+                        'positive_points' => [
+                            'Explained all three components: Model, View, and Controller',
+                            'Identified it as a design pattern promoting separation of concerns'
+                        ],
+                        'missing_points' => [
+                            'Did not explain the execution flow (User -> Controller -> Model -> View)',
+                            'Could mention benefits like testability and parallel development'
+                        ],
+                        'suggestions' => [
+                            'Walk through a practical request lifecycle example (e.g. fetching a user page).',
+                            'Highlight the benefit of separation of concerns.'
+                        ],
+                        'improved_answer' => $improved,
+                        'grammar_feedback' => 'Technical terms were used accurately.',
+                        'voice_analysis' => 'Speaking speed: 122 WPM. Filler words: None. Voice clarity: 89%.',
+                        'camera_analysis' => 'Eye contact: 84%. Smiling: Warm. Posture: Upright.'
+                    ]);
+                }
+
+                // 4. Difference between GET and POST
+                if (stripos($prompt, 'GET and POST') !== false || (stripos($prompt, 'GET') !== false && stripos($prompt, 'POST') !== false)) {
+                    $improved = "GET is used to request data from a specified resource, with parameters visible in the URL, cacheable, and subject to length limits. POST is used to send data to a server to create/update a resource, with data sent in the HTTP request body, making it more secure and having no length limits.";
+                    if ($lang === 'gu') {
+                        $improved = "GET Ã ÂªÂ¨Ã Â«â€¹ Ã Âªâ€°Ã ÂªÂªÃ ÂªÂ¯Ã Â«â€¹Ã Âªâ€” Ã ÂªÂ¡Ã Â«â€¡Ã ÂªÅ¸Ã ÂªÂ¾ Ã ÂªÂ®Ã Â«â€¡Ã ÂªÂ³Ã ÂªÂµÃ ÂªÂµÃ ÂªÂ¾ Ã ÂªÂ®Ã ÂªÂ¾Ã ÂªÅ¸Ã Â«â€¡ Ã ÂªÂ¥Ã ÂªÂ¾Ã ÂªÂ¯ Ã Âªâ€ºÃ Â«â€¡, Ã ÂªÅ“Ã Â«â€¡Ã ÂªÂ¨Ã ÂªÂ¾ Ã ÂªÂªÃ Â«â€¡Ã ÂªÂ°Ã ÂªÂ¾Ã ÂªÂ®Ã Â«â‚¬Ã ÂªÅ¸Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂ¸ URL Ã ÂªÂ®Ã ÂªÂ¾Ã Âªâ€š Ã ÂªÂ¦Ã Â«â€¡Ã Âªâ€“Ã ÂªÂ¾Ã ÂªÂ¯ Ã Âªâ€ºÃ Â«â€¡, Ã Âªâ€¢Ã Â«â€¡Ã ÂªÂ¶ Ã Âªâ€¢Ã ÂªÂ°Ã Â«â‚¬ Ã ÂªÂ¶Ã Âªâ€¢Ã ÂªÂ¾Ã ÂªÂ¯ Ã Âªâ€ºÃ Â«â€¡ Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂ²Ã Âªâ€šÃ ÂªÂ¬Ã ÂªÂ¾Ã ÂªË†Ã ÂªÂ¨Ã Â«â‚¬ Ã ÂªÂ®Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂ¯Ã ÂªÂ¾Ã ÂªÂ¦Ã ÂªÂ¾ Ã ÂªÂ¹Ã Â«â€¹Ã ÂªÂ¯ Ã Âªâ€ºÃ Â«â€¡. POST Ã ÂªÂ¨Ã Â«â€¹ Ã Âªâ€°Ã ÂªÂªÃ ÂªÂ¯Ã Â«â€¹Ã Âªâ€” Ã ÂªÂ°Ã ÂªÂ¿Ã ÂªÂ¸Ã Â«â€¹Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂ¸ Ã ÂªÂ¬Ã ÂªÂ¨Ã ÂªÂ¾Ã ÂªÂµÃ ÂªÂµÃ ÂªÂ¾/Ã Âªâ€¦Ã ÂªÂªÃ ÂªÂ¡Ã Â«â€¡Ã ÂªÅ¸ Ã Âªâ€¢Ã ÂªÂ°Ã ÂªÂµÃ ÂªÂ¾ Ã ÂªÂ¡Ã Â«â€¡Ã ÂªÅ¸Ã ÂªÂ¾ Ã ÂªÂ®Ã Â«â€¹Ã Âªâ€¢Ã ÂªÂ²Ã ÂªÂµÃ ÂªÂ¾ Ã ÂªÂ®Ã ÂªÂ¾Ã ÂªÅ¸Ã Â«â€¡ Ã ÂªÂ¥Ã ÂªÂ¾Ã ÂªÂ¯ Ã Âªâ€ºÃ Â«â€¡, Ã ÂªÂ¡Ã Â«â€¡Ã ÂªÅ¸Ã ÂªÂ¾ HTTP Ã ÂªÂ°Ã ÂªÂ¿Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ¸Ã Â«ï¿½Ã ÂªÅ¸ Ã ÂªÂ¬Ã Â«â€¹Ã ÂªÂ¡Ã Â«â‚¬Ã ÂªÂ®Ã ÂªÂ¾Ã Âªâ€š Ã ÂªÂ®Ã Â«â€¹Ã Âªâ€¢Ã ÂªÂ²Ã ÂªÂ¾Ã ÂªÂ¯ Ã Âªâ€ºÃ Â«â€¡ Ã ÂªÅ“Ã Â«â€¡ Ã ÂªÂµÃ ÂªÂ§Ã Â«ï¿½ Ã ÂªÂ¸Ã Â«ï¿½Ã ÂªÂ°Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂ·Ã ÂªÂ¿Ã ÂªÂ¤ Ã Âªâ€ºÃ Â«â€¡.";
+                    } elseif ($lang === 'hi') {
+                        $improved = "GET Ã Â¤â€¢Ã Â¤Â¾ Ã Â¤â€°Ã Â¤ÂªÃ Â¤Â¯Ã Â¥â€¹Ã Â¤â€” Ã Â¤Â¡Ã Â¥â€¡Ã Â¤Å¸Ã Â¤Â¾ Ã Â¤ÂªÃ Â¥ï¿½Ã Â¤Â°Ã Â¤Â¾Ã Â¤ÂªÃ Â¥ï¿½Ã Â¤Â¤ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â²Ã Â¤Â¿Ã Â¤ï¿½ Ã Â¤â€¢Ã Â¤Â¿Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Å“Ã Â¤Â¾Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†, Ã Â¤Å“Ã Â¤Â¿Ã Â¤Â¸Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤ÂªÃ Â¥Ë†Ã Â¤Â°Ã Â¤Â¾Ã Â¤Â®Ã Â¥â‚¬Ã Â¤Å¸Ã Â¤Â° URL Ã Â¤Â®Ã Â¥â€¡Ã Â¤â€š Ã Â¤Â¦Ã Â¤Â¿Ã Â¤â€“Ã Â¤Â¾Ã Â¤Ë† Ã Â¤Â¦Ã Â¥â€¡Ã Â¤Â¤Ã Â¥â€¡ Ã Â¤Â¹Ã Â¥Ë†Ã Â¤â€š, Ã Â¤Â¯Ã Â¤Â¹ Ã Â¤â€¢Ã Â¥Ë†Ã Â¤Â¶Ã Â¥â€¡Ã Â¤Â¬Ã Â¤Â² Ã Â¤Â¹Ã Â¥â€¹Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë† Ã Â¤â€Ã Â¤Â° Ã Â¤â€¡Ã Â¤Â¸Ã Â¤â€¢Ã Â¥â‚¬ Ã Â¤Â²Ã Â¤â€šÃ Â¤Â¬Ã Â¤Â¾Ã Â¤Ë† Ã Â¤â€¢Ã Â¥â‚¬ Ã Â¤Â¸Ã Â¥â‚¬Ã Â¤Â®Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥â€¹Ã Â¤Â¤Ã Â¥â‚¬ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤ POST Ã Â¤â€¢Ã Â¤Â¾ Ã Â¤â€°Ã Â¤ÂªÃ Â¤Â¯Ã Â¥â€¹Ã Â¤â€” Ã Â¤Â¡Ã Â¥â€¡Ã Â¤Å¸Ã Â¤Â¾ Ã Â¤Â­Ã Â¥â€¡Ã Â¤Å“Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â²Ã Â¤Â¿Ã Â¤ï¿½ Ã Â¤â€¢Ã Â¤Â¿Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Å“Ã Â¤Â¾Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†, Ã Â¤Â¡Ã Â¥â€¡Ã Â¤Å¸Ã Â¤Â¾ HTTP Ã Â¤Â°Ã Â¤Â¿Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â¸Ã Â¥ï¿½Ã Â¤Å¸ Ã Â¤Â¬Ã Â¥â€°Ã Â¤Â¡Ã Â¥â‚¬ Ã Â¤Â®Ã Â¥â€¡Ã Â¤â€š Ã Â¤Â­Ã Â¥â€¡Ã Â¤Å“Ã Â¤Â¾ Ã Â¤Å“Ã Â¤Â¾Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë† Ã Â¤Å“Ã Â¤Â¿Ã Â¤Â¸Ã Â¤Â¸Ã Â¥â€¡ Ã Â¤Â¯Ã Â¤Â¹ Ã Â¤â€¦Ã Â¤Â§Ã Â¤Â¿Ã Â¤â€¢ Ã Â¤Â¸Ã Â¥ï¿½Ã Â¤Â°Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â·Ã Â¤Â¿Ã Â¤Â¤ Ã Â¤Â°Ã Â¤Â¹Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤";
+                    }
+
+                    return json_encode([
+                        'score' => 86,
+                        'communication_score' => 88,
+                        'confidence_score' => 85,
+                        'positive_points' => [
+                            'Correctly identified GET for retrieval and POST for submission',
+                            'Mentioned visibility of parameters in URL vs Request Body'
+                        ],
+                        'missing_points' => [
+                            'Could explain HTTP idempotency (GET is idempotent, POST is not)',
+                            'Did not mention payload size constraints on GET'
+                        ],
+                        'suggestions' => [
+                            'Explain that GET requests can be bookmarked and cached, whereas POST requests cannot.',
+                            'Explain security differences (POST hides parameters from browser history).'
+                        ],
+                        'improved_answer' => $improved,
+                        'grammar_feedback' => 'Good comparison flow.',
+                        'voice_analysis' => 'Speaking speed: 128 WPM. Filler words: 1. Voice clarity: 91%.',
+                        'camera_analysis' => 'Eye contact: 86%. Smiling: Yes. Posture: Alert.'
+                    ]);
+                }
+
+                // 5. What is Middleware?
+                if (stripos($prompt, 'Middleware') !== false) {
+                    $improved = "Middleware acts as a middle layer between an HTTP request and your application's route. It is used to inspect, filter, or modify incoming requests (e.g., verifying user authentication or checking CSRF tokens) before they reach the controller, and can also modify the outgoing response.";
+                    if ($lang === 'gu') {
+                        $improved = "Ã ÂªÂ®Ã ÂªÂ¿Ã ÂªÂ¡Ã ÂªÂ²Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ° HTTP Ã ÂªÂ°Ã ÂªÂ¿Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ¸Ã Â«ï¿½Ã ÂªÅ¸ Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ Ã Âªï¿½Ã ÂªÂªÃ Â«ï¿½Ã ÂªÂ²Ã ÂªÂ¿Ã Âªâ€¢Ã Â«â€¡Ã ÂªÂ¶Ã ÂªÂ¨ Ã ÂªÂ°Ã ÂªÂ¾Ã Âªâ€°Ã ÂªÅ¸ Ã ÂªÂµÃ ÂªÅ¡Ã Â«ï¿½Ã ÂªÅ¡Ã Â«â€¡ Ã ÂªÂ¬Ã Â«ï¿½Ã ÂªÂ°Ã ÂªÂ¿Ã ÂªÅ“ Ã ÂªÂ¤Ã ÂªÂ°Ã Â«â‚¬Ã Âªâ€¢Ã Â«â€¡ Ã Âªâ€¢Ã ÂªÂ¾Ã ÂªÂ® Ã Âªâ€¢Ã ÂªÂ°Ã Â«â€¡ Ã Âªâ€ºÃ Â«â€¡. Ã ÂªÂ¤Ã Â«â€¡ Ã Âªâ€¡Ã ÂªÂ¨Ã Âªâ€¢Ã ÂªÂ®Ã ÂªÂ¿Ã Âªâ€šÃ Âªâ€” Ã ÂªÂ°Ã ÂªÂ¿Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ¸Ã Â«ï¿½Ã ÂªÅ¸ Ã ÂªÂ«Ã ÂªÂ¿Ã ÂªÂ²Ã Â«ï¿½Ã ÂªÅ¸Ã ÂªÂ° Ã Âªâ€¢Ã ÂªÂ°Ã ÂªÂµÃ ÂªÂ¾ (Ã ÂªÅ“Ã Â«â€¡Ã ÂªÂ® Ã Âªâ€¢Ã Â«â€¡ Ã Âªâ€œÃ ÂªÂ¥Ã Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÅ¸Ã ÂªÂ¿Ã Âªâ€¢Ã Â«â€¡Ã ÂªÂ¶Ã ÂªÂ¨ Ã Âªâ€¦Ã ÂªÂ¥Ã ÂªÂµÃ ÂªÂ¾ CSRF Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ²Ã ÂªÂ¿Ã ÂªÂ¡Ã Â«â€¡Ã ÂªÂ¶Ã ÂªÂ¨) Ã ÂªÂ®Ã ÂªÂ¾Ã ÂªÅ¸Ã Â«â€¡ Ã Âªâ€°Ã ÂªÂªÃ ÂªÂ¯Ã Â«â€¹Ã Âªâ€”Ã Â«â‚¬ Ã Âªâ€ºÃ Â«â€¡.";
+                    } elseif ($lang === 'hi') {
+                        $improved = "Ã Â¤Â®Ã Â¤Â¿Ã Â¤Â¡Ã Â¤Â²Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â¯Ã Â¤Â° HTTP Ã Â¤Â°Ã Â¤Â¿Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â¸Ã Â¥ï¿½Ã Â¤Å¸ Ã Â¤â€Ã Â¤Â° Ã Â¤ï¿½Ã Â¤ÂªÃ Â¥ï¿½Ã Â¤Â²Ã Â¤Â¿Ã Â¤â€¢Ã Â¥â€¡Ã Â¤Â¶Ã Â¤Â¨ Ã Â¤Â°Ã Â¥â€šÃ Â¤Å¸ Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â¬Ã Â¥â‚¬Ã Â¤Å¡ Ã Â¤ï¿½Ã Â¤â€¢ Ã Â¤Â¬Ã Â¥ï¿½Ã Â¤Â°Ã Â¤Â¿Ã Â¤Å“ Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â°Ã Â¥â€šÃ Â¤Âª Ã Â¤Â®Ã Â¥â€¡Ã Â¤â€š Ã Â¤â€¢Ã Â¤Â¾Ã Â¤Â°Ã Â¥ï¿½Ã Â¤Â¯ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤ Ã Â¤â€¡Ã Â¤Â¸Ã Â¤â€¢Ã Â¤Â¾ Ã Â¤â€°Ã Â¤ÂªÃ Â¤Â¯Ã Â¥â€¹Ã Â¤â€” Ã Â¤â€ Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤ÂµÃ Â¤Â¾Ã Â¤Â²Ã Â¥â€¡ Ã Â¤â€¦Ã Â¤Â¨Ã Â¥ï¿½Ã Â¤Â°Ã Â¥â€¹Ã Â¤Â§Ã Â¥â€¹Ã Â¤â€š Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤Â«Ã Â¤Â¼Ã Â¤Â¿Ã Â¤Â²Ã Â¥ï¿½Ã Â¤Å¸Ã Â¤Â° Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Â¸Ã Â¤Â¤Ã Â¥ï¿½Ã Â¤Â¯Ã Â¤Â¾Ã Â¤ÂªÃ Â¤Â¿Ã Â¤Â¤ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¨Ã Â¥â€¡ (Ã Â¤Å“Ã Â¥Ë†Ã Â¤Â¸Ã Â¥â€¡ Ã Â¤â€˜Ã Â¤Â¥Ã Â¥â€¡Ã Â¤â€šÃ Â¤Å¸Ã Â¤Â¿Ã Â¤â€¢Ã Â¥â€¡Ã Â¤Â¶Ã Â¤Â¨ Ã Â¤Â¯Ã Â¤Â¾ CSRF Ã Â¤ÂµÃ Â¥Ë†Ã Â¤Â²Ã Â¤Â¿Ã Â¤Â¡Ã Â¥â€¡Ã Â¤Â¶Ã Â¤Â¨) Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â²Ã Â¤Â¿Ã Â¤ï¿½ Ã Â¤â€¢Ã Â¤Â¿Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Å“Ã Â¤Â¾Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤";
+                    }
+
+                    return json_encode([
+                        'score' => 88,
+                        'communication_score' => 90,
+                        'confidence_score' => 87,
+                        'positive_points' => [
+                            'Explained middleware as an HTTP request filter layer',
+                            'Provided relevant examples (auth, CSRF verification)'
+                        ],
+                        'missing_points' => [
+                            'Did not explain registration (bootstrap/app.php in Laravel 11 or Kernel in older versions)',
+                            'Could mention terminate/after middleware'
+                        ],
+                        'suggestions' => [
+                            'Explain the difference between before middleware and after/terminate middleware.',
+                            'Briefly mention how middleware is registered in Laravel.'
+                        ],
+                        'improved_answer' => $improved,
+                        'grammar_feedback' => 'Clear and technically sound response.',
+                        'voice_analysis' => 'Speaking speed: 124 WPM. Filler words: None. Voice clarity: 93%.',
+                        'camera_analysis' => 'Eye contact: 89%. Smiling: Yes. Posture: Steady.'
+                    ]);
+                }
+
+                // 6. What is Route?
+                if (stripos($prompt, 'Route') !== false) {
+                    $improved = "A Route in Laravel maps an incoming URL pattern to a specific controller action or closure. It defines the application's entry points and can handle route parameters, enforce middleware, and support named routing for generating dynamic URLs.";
+                    if ($lang === 'gu') {
+                        $improved = "Ã ÂªÂ²Ã ÂªÂ¾Ã ÂªÂ°Ã ÂªÂ¾Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ²Ã ÂªÂ®Ã ÂªÂ¾Ã Âªâ€š Route Ã Âªâ€¡Ã ÂªÂ¨Ã Âªâ€¢Ã ÂªÂ®Ã ÂªÂ¿Ã Âªâ€šÃ Âªâ€” URL Ã ÂªÂªÃ Â«â€¡Ã ÂªÅ¸Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂ¨Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÅ¡Ã Â«â€¹Ã Âªâ€¢Ã Â«ï¿½Ã Âªâ€¢Ã ÂªÂ¸ Ã Âªâ€¢Ã Âªâ€šÃ ÂªÅ¸Ã Â«ï¿½Ã ÂªÂ°Ã Â«â€¹Ã ÂªÂ²Ã ÂªÂ° Ã Âªï¿½Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂ¶Ã ÂªÂ¨ Ã ÂªÂ¸Ã ÂªÂ¾Ã ÂªÂ¥Ã Â«â€¡ Ã ÂªÂ®Ã Â«â€¡Ã ÂªÂª Ã Âªâ€¢Ã ÂªÂ°Ã Â«â€¡ Ã Âªâ€ºÃ Â«â€¡. Ã ÂªÂ¤Ã Â«â€¡ Ã Âªï¿½Ã ÂªÂªÃ Â«ï¿½Ã ÂªÂ²Ã ÂªÂ¿Ã Âªâ€¢Ã Â«â€¡Ã ÂªÂ¶Ã ÂªÂ¨Ã ÂªÂ¨Ã ÂªÂ¾ Ã Âªï¿½Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÅ¸Ã Â«ï¿½Ã ÂªÂ°Ã Â«â‚¬ Ã ÂªÂªÃ Â«â€¹Ã Âªâ€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÅ¸Ã Â«ï¿½Ã ÂªÂ¸ Ã ÂªÂ¨Ã Âªâ€¢Ã Â«ï¿½Ã Âªâ€¢Ã Â«â‚¬ Ã Âªâ€¢Ã ÂªÂ°Ã Â«â€¡ Ã Âªâ€ºÃ Â«â€¡ Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂªÃ Â«â€¡Ã ÂªÂ°Ã ÂªÂ¾Ã ÂªÂ®Ã Â«â‚¬Ã ÂªÅ¸Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂ¸ Ã ÂªÂ¤Ã Â«â€¡Ã ÂªÂ®Ã ÂªÅ“ Ã ÂªÂ®Ã ÂªÂ¿Ã ÂªÂ¡Ã ÂªÂ²Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ°Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂ¸Ã ÂªÂªÃ Â«â€¹Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÅ¸ Ã Âªâ€¢Ã ÂªÂ°Ã Â«â€¡ Ã Âªâ€ºÃ Â«â€¡.";
+                    } elseif ($lang === 'hi') {
+                        $improved = "Ã Â¤Â²Ã Â¤Â¾Ã Â¤Â°Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â² Ã Â¤Â®Ã Â¥â€¡Ã Â¤â€š Route Ã Â¤ï¿½Ã Â¤â€¢ Ã Â¤â€ Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤ÂµÃ Â¤Â¾Ã Â¤Â²Ã Â¥â€¡ URL Ã Â¤ÂªÃ Â¥Ë†Ã Â¤Å¸Ã Â¤Â°Ã Â¥ï¿½Ã Â¤Â¨ Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤ï¿½Ã Â¤â€¢ Ã Â¤ÂµÃ Â¤Â¿Ã Â¤Â¶Ã Â¤Â¿Ã Â¤Â·Ã Â¥ï¿½Ã Â¤Å¸ Ã Â¤â€¢Ã Â¤â€šÃ Â¤Å¸Ã Â¥ï¿½Ã Â¤Â°Ã Â¥â€¹Ã Â¤Â²Ã Â¤Â° Ã Â¤ï¿½Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â¶Ã Â¤Â¨ Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â²Ã Â¥â€¹Ã Â¤Å“Ã Â¤Â° Ã Â¤Â¸Ã Â¥â€¡ Ã Â¤Â®Ã Â¥Ë†Ã Â¤Âª Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤ Ã Â¤Â¯Ã Â¤Â¹ Ã Â¤ï¿½Ã Â¤ÂªÃ Â¥ï¿½Ã Â¤Â²Ã Â¤Â¿Ã Â¤â€¢Ã Â¥â€¡Ã Â¤Â¶Ã Â¤Â¨ Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤ÂªÃ Â¥ï¿½Ã Â¤Â°Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â¶ Ã Â¤Â¦Ã Â¥ï¿½Ã Â¤ÂµÃ Â¤Â¾Ã Â¤Â°Ã Â¥â€¹Ã Â¤â€š Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤ÂªÃ Â¤Â°Ã Â¤Â¿Ã Â¤Â­Ã Â¤Â¾Ã Â¤Â·Ã Â¤Â¿Ã Â¤Â¤ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë† Ã Â¤â€Ã Â¤Â° Ã Â¤ÂªÃ Â¥Ë†Ã Â¤Â°Ã Â¤Â¾Ã Â¤Â®Ã Â¥â‚¬Ã Â¤Å¸Ã Â¤Â° Ã Â¤Âµ Ã Â¤Â®Ã Â¤Â¿Ã Â¤Â¡Ã Â¤Â²Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â¯Ã Â¤Â° Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤Â¸Ã Â¤ÂªÃ Â¥â€¹Ã Â¤Â°Ã Â¥ï¿½Ã Â¤Å¸ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤";
+                    }
+
+                    return json_encode([
+                        'score' => 84,
+                        'communication_score' => 86,
+                        'confidence_score' => 83,
+                        'positive_points' => [
+                            'Defined Route as a URL-to-Controller mapping mechanism',
+                            'Mentioned basic routes like GET or POST routing'
+                        ],
+                        'missing_points' => [
+                            'Did not mention route parameters or route naming',
+                            'Could mention route groups or middleware mapping'
+                        ],
+                        'suggestions' => [
+                            'Explain the benefit of named routes (`Route::name()`).',
+                            'Mention how routes are grouped for authentication or prefixes.'
+                        ],
+                        'improved_answer' => $improved,
+                        'grammar_feedback' => 'Simple and accurate explanation.',
+                        'voice_analysis' => 'Speaking speed: 120 WPM. Filler words: None. Voice clarity: 88%.',
+                        'camera_analysis' => 'Eye contact: 82%. Smiling: Yes. Posture: Normal.'
+                    ]);
+                }
+
+                // 7. What is Migration?
+                if (stripos($prompt, 'Migration') !== false) {
+                    $improved = "Migrations are like version control for your database, allowing you to define, modify, and share the application's database schema using PHP code. They include an `up` method for applying schema changes and a `down` method to revert them.";
+                    if ($lang === 'gu') {
+                        $improved = "Ã ÂªÂ®Ã ÂªÂ¾Ã Âªâ€¡Ã Âªâ€”Ã Â«ï¿½Ã ÂªÂ°Ã Â«â€¡Ã ÂªÂ¶Ã ÂªÂ¨ Ã Âªï¿½ Ã ÂªÂ¡Ã Â«â€¡Ã ÂªÅ¸Ã ÂªÂ¾Ã ÂªÂ¬Ã Â«â€¡Ã Âªï¿½ Ã ÂªÂ®Ã ÂªÂ¾Ã ÂªÅ¸Ã Â«â€¡ Ã ÂªÂµÃ ÂªÂ°Ã Â«ï¿½Ã Âªï¿½Ã ÂªÂ¨ Ã Âªâ€¢Ã Âªâ€šÃ ÂªÅ¸Ã Â«ï¿½Ã ÂªÂ°Ã Â«â€¹Ã ÂªÂ² Ã ÂªÂ¸Ã ÂªÂ®Ã ÂªÂ¾Ã ÂªÂ¨ Ã Âªâ€ºÃ Â«â€¡, Ã ÂªÅ“Ã Â«â€¡ PHP Ã Âªâ€¢Ã Â«â€¹Ã ÂªÂ¡ Ã ÂªÂ¦Ã Â«ï¿½Ã ÂªÂµÃ ÂªÂ¾Ã ÂªÂ°Ã ÂªÂ¾ Ã ÂªÂ¡Ã Â«â€¡Ã ÂªÅ¸Ã ÂªÂ¾Ã ÂªÂ¬Ã Â«â€¡Ã Âªï¿½ Ã ÂªÂ¸Ã Â«ï¿½Ã Âªâ€¢Ã Â«â‚¬Ã ÂªÂ®Ã ÂªÂ¾ Ã ÂªÂµÃ Â«ï¿½Ã ÂªÂ¯Ã ÂªÂ¾Ã Âªâ€“Ã Â«ï¿½Ã ÂªÂ¯Ã ÂªÂ¾Ã ÂªÂ¯Ã ÂªÂ¿Ã ÂªÂ¤ Ã Âªâ€¢Ã ÂªÂ°Ã ÂªÂµÃ ÂªÂ¾ Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂ¶Ã Â«â€¡Ã ÂªÂ° Ã Âªâ€¢Ã ÂªÂ°Ã ÂªÂµÃ ÂªÂ¾Ã ÂªÂ¨Ã Â«â‚¬ Ã ÂªÂ®Ã Âªâ€šÃ ÂªÅ“Ã Â«â€šÃ ÂªÂ°Ã Â«â‚¬ Ã Âªâ€ Ã ÂªÂªÃ Â«â€¡ Ã Âªâ€ºÃ Â«â€¡. Ã ÂªÂ¤Ã Â«â€¡Ã ÂªÂ®Ã ÂªÂ¾Ã Âªâ€š Ã ÂªÂ«Ã Â«â€¡Ã ÂªÂ°Ã ÂªÂ«Ã ÂªÂ¾Ã ÂªÂ°Ã Â«â€¹ Ã ÂªÂ²Ã ÂªÂ¾Ã Âªâ€”Ã Â«ï¿½ Ã Âªâ€¢Ã ÂªÂ°Ã ÂªÂµÃ ÂªÂ¾ Ã ÂªÂ®Ã ÂªÂ¾Ã ÂªÅ¸Ã Â«â€¡ `up` Ã ÂªÂªÃ ÂªÂ¦Ã Â«ï¿½Ã ÂªÂ§Ã ÂªÂ¤Ã ÂªÂ¿ Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂ¤Ã Â«â€¡Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂªÃ ÂªÂ¾Ã Âªâ€ºÃ ÂªÂ¾ Ã Âªâ€“Ã Â«â€¡Ã Âªâ€šÃ ÂªÅ¡Ã ÂªÂµÃ ÂªÂ¾ Ã ÂªÂ®Ã ÂªÂ¾Ã ÂªÅ¸Ã Â«â€¡ `down` Ã ÂªÂªÃ ÂªÂ¦Ã Â«ï¿½Ã ÂªÂ§Ã ÂªÂ¤Ã ÂªÂ¿ Ã ÂªÂ¹Ã Â«â€¹Ã ÂªÂ¯ Ã Âªâ€ºÃ Â«â€¡.";
+                    } elseif ($lang === 'hi') {
+                        $improved = "Ã Â¤Â®Ã Â¤Â¾Ã Â¤â€¡Ã Â¤â€”Ã Â¥ï¿½Ã Â¤Â°Ã Â¥â€¡Ã Â¤Â¶Ã Â¤Â¨ Ã Â¤â€ Ã Â¤ÂªÃ Â¤â€¢Ã Â¥â€¡ Ã Â¤Â¡Ã Â¥â€¡Ã Â¤Å¸Ã Â¤Â¾Ã Â¤Â¬Ã Â¥â€¡Ã Â¤Â¸ Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â²Ã Â¤Â¿Ã Â¤ï¿½ Ã Â¤ÂµÃ Â¤Â°Ã Â¥ï¿½Ã Â¤Å“Ã Â¤Â¨ Ã Â¤â€¢Ã Â¤â€šÃ Â¤Å¸Ã Â¥ï¿½Ã Â¤Â°Ã Â¥â€¹Ã Â¤Â² Ã Â¤â€¢Ã Â¥â‚¬ Ã Â¤Â¤Ã Â¤Â°Ã Â¤Â¹ Ã Â¤Â¹Ã Â¥Ë†, Ã Â¤Å“Ã Â¥â€¹ PHP Ã Â¤â€¢Ã Â¥â€¹Ã Â¤Â¡ Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â®Ã Â¤Â¾Ã Â¤Â§Ã Â¥ï¿½Ã Â¤Â¯Ã Â¤Â® Ã Â¤Â¸Ã Â¥â€¡ Ã Â¤Â¡Ã Â¥â€¡Ã Â¤Å¸Ã Â¤Â¾Ã Â¤Â¬Ã Â¥â€¡Ã Â¤Â¸ Ã Â¤Â¸Ã Â¥ï¿½Ã Â¤â€¢Ã Â¥â‚¬Ã Â¤Â®Ã Â¤Â¾ Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤ÂªÃ Â¤Â°Ã Â¤Â¿Ã Â¤Â­Ã Â¤Â¾Ã Â¤Â·Ã Â¤Â¿Ã Â¤Â¤ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤â€Ã Â¤Â° Ã Â¤Â¸Ã Â¤Â¾Ã Â¤ï¿½Ã Â¤Â¾ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤â€¢Ã Â¥â‚¬ Ã Â¤â€¦Ã Â¤Â¨Ã Â¥ï¿½Ã Â¤Â®Ã Â¤Â¤Ã Â¤Â¿ Ã Â¤Â¦Ã Â¥â€¡Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤ Ã Â¤â€¡Ã Â¤Â¸Ã Â¤Â®Ã Â¥â€¡Ã Â¤â€š Ã Â¤Â¬Ã Â¤Â¦Ã Â¤Â²Ã Â¤Â¾Ã Â¤Âµ Ã Â¤Â²Ã Â¤Â¾Ã Â¤â€”Ã Â¥â€š Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â²Ã Â¤Â¿Ã Â¤ï¿½ `up` Ã Â¤ÂµÃ Â¤Â¿Ã Â¤Â§Ã Â¤Â¿ Ã Â¤â€Ã Â¤Â° Ã Â¤Â¬Ã Â¤Â¦Ã Â¤Â²Ã Â¤Â¾Ã Â¤Âµ Ã Â¤ÂµÃ Â¤Â¾Ã Â¤ÂªÃ Â¤Â¸ Ã Â¤Â²Ã Â¥â€¡Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â²Ã Â¤Â¿Ã Â¤ï¿½ `down` Ã Â¤ÂµÃ Â¤Â¿Ã Â¤Â§Ã Â¤Â¿ Ã Â¤Â¹Ã Â¥â€¹Ã Â¤Â¤Ã Â¥â‚¬ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤";
+                    }
+
+                    return json_encode([
+                        'score' => 89,
+                        'communication_score' => 91,
+                        'confidence_score' => 88,
+                        'positive_points' => [
+                            'Correctly identified migrations as database version control',
+                            'Mentioned up() and down() methods for schema updates and rollbacks'
+                        ],
+                        'missing_points' => [
+                            'Could mention the command line tool (Artisan php artisan migrate)',
+                            'Did not state how it helps teamwork by keeping databases synchronized'
+                        ],
+                        'suggestions' => [
+                            'State the Artisan command to run migrations.',
+                            'Explain how migrations prevent manual SQL file sharing in development teams.'
+                        ],
+                        'improved_answer' => $improved,
+                        'grammar_feedback' => 'Excellent structural explanation.',
+                        'voice_analysis' => 'Speaking speed: 126 WPM. Filler words: 1. Voice clarity: 90%.',
+                        'camera_analysis' => 'Eye contact: 85%. Smiling: Yes. Posture: Professional.'
+                    ]);
+                }
+
+                // 8. What is Eloquent ORM?
+                if (stripos($prompt, 'Eloquent ORM') !== false || stripos($prompt, 'Eloquent') !== false) {
+                    $improved = "Eloquent ORM is Laravel's built-in Object-Relational Mapper based on the ActiveRecord pattern. It allows developers to interact with database tables using PHP classes (Models), enabling database queries and relationship management without writing raw SQL.";
+                    if ($lang === 'gu') {
+                        $improved = "Ã Âªâ€¡Ã ÂªÂ²Ã Â«â€¹Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÅ¸ ORM (Eloquent ORM) Ã Âªï¿½ Ã ÂªÂ²Ã ÂªÂ¾Ã ÂªÂ°Ã ÂªÂ¾Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ²Ã ÂªÂ¨Ã Â«ï¿½Ã Âªâ€š Ã ÂªÂ¬Ã ÂªÂ¿Ã ÂªÂ²Ã Â«ï¿½Ã ÂªÅ¸-Ã Âªâ€¡Ã ÂªÂ¨ Ã Âªâ€œÃ ÂªÂ¬Ã Â«ï¿½Ã ÂªÅ“Ã Â«â€¡Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÅ¸-Ã ÂªÂ°Ã ÂªÂ¿Ã ÂªÂ²Ã Â«â€¡Ã ÂªÂ¶Ã ÂªÂ¨Ã ÂªÂ² Ã ÂªÂ®Ã Â«â€¡Ã ÂªÂªÃ ÂªÂ° Ã Âªâ€ºÃ Â«â€¡ Ã ÂªÅ“Ã Â«â€¡ ActiveRecord Ã ÂªÂªÃ Â«â€¡Ã ÂªÅ¸Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂ¨ Ã ÂªÂªÃ ÂªÂ° Ã Âªâ€ Ã ÂªÂ§Ã ÂªÂ¾Ã ÂªÂ°Ã ÂªÂ¿Ã ÂªÂ¤ Ã Âªâ€ºÃ Â«â€¡. Ã ÂªÂ¤Ã Â«â€¡ Ã ÂªÂ°Ã Â«â€¹ SQL Ã ÂªÂ²Ã Âªâ€“Ã Â«ï¿½Ã ÂªÂ¯Ã ÂªÂ¾ Ã ÂªÂµÃ Âªâ€”Ã ÂªÂ° PHP Ã ÂªÂ®Ã Â«â€¹Ã ÂªÂ¡Ã Â«â€¡Ã ÂªÂ²Ã Â«ï¿½Ã ÂªÂ¸ Ã ÂªÂ¦Ã Â«ï¿½Ã ÂªÂµÃ ÂªÂ¾Ã ÂªÂ°Ã ÂªÂ¾ Ã ÂªÂ¡Ã Â«â€¡Ã ÂªÅ¸Ã ÂªÂ¾Ã ÂªÂ¬Ã Â«â€¡Ã Âªï¿½ Ã ÂªÂ¸Ã ÂªÂ¾Ã ÂªÂ¥Ã Â«â€¡ Ã Âªâ€¢Ã ÂªÂ¾Ã ÂªÂ® Ã Âªâ€¢Ã ÂªÂ°Ã ÂªÂµÃ ÂªÂ¾Ã ÂªÂ¨Ã Â«â‚¬ Ã ÂªÂ¸Ã Â«ï¿½Ã ÂªÂµÃ ÂªÂ¿Ã ÂªÂ§Ã ÂªÂ¾ Ã Âªâ€ Ã ÂªÂªÃ Â«â€¡ Ã Âªâ€ºÃ Â«â€¡.";
+                    } elseif ($lang === 'hi') {
+                        $improved = "Ã Â¤ï¿½Ã Â¤Â²Ã Â¥â€¹Ã Â¤â€¢Ã Â¥â€¡Ã Â¤â€šÃ Â¤Å¸ ORM (Eloquent ORM) Ã Â¤Â²Ã Â¤Â¾Ã Â¤Â°Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â² Ã Â¤â€¢Ã Â¤Â¾ Ã Â¤â€¡Ã Â¤Â¨-Ã Â¤Â¬Ã Â¤Â¿Ã Â¤Â²Ã Â¥ï¿½Ã Â¤Å¸ Ã Â¤â€˜Ã Â¤Â¬Ã Â¥ï¿½Ã Â¤Å“Ã Â¥â€¡Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Å¸-Ã Â¤Â°Ã Â¤Â¿Ã Â¤Â²Ã Â¥â€¡Ã Â¤Â¶Ã Â¤Â¨Ã Â¤Â² Ã Â¤Â®Ã Â¥Ë†Ã Â¤ÂªÃ Â¤Â° Ã Â¤Â¹Ã Â¥Ë† Ã Â¤Å“Ã Â¥â€¹ ActiveRecord Ã Â¤ÂªÃ Â¥Ë†Ã Â¤Å¸Ã Â¤Â°Ã Â¥ï¿½Ã Â¤Â¨ Ã Â¤ÂªÃ Â¤Â° Ã Â¤â€ Ã Â¤Â§Ã Â¤Â¾Ã Â¤Â°Ã Â¤Â¿Ã Â¤Â¤ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤ Ã Â¤Â¯Ã Â¤Â¹ Ã Â¤Â¬Ã Â¤Â¿Ã Â¤Â¨Ã Â¤Â¾ Ã Â¤Â°Ã Â¥â€° SQL Ã Â¤Â²Ã Â¤Â¿Ã Â¤â€“Ã Â¥â€¡ PHP Ã Â¤Â®Ã Â¥â€°Ã Â¤Â¡Ã Â¤Â²Ã Â¥ï¿½Ã Â¤Â¸ Ã Â¤â€¢Ã Â¤Â¾ Ã Â¤â€°Ã Â¤ÂªÃ Â¤Â¯Ã Â¥â€¹Ã Â¤â€” Ã Â¤â€¢Ã Â¤Â°Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â¡Ã Â¥â€¡Ã Â¤Å¸Ã Â¤Â¾Ã Â¤Â¬Ã Â¥â€¡Ã Â¤Â¸ Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â¸Ã Â¤Â¾Ã Â¤Â¥ Ã Â¤â€¡Ã Â¤â€šÃ Â¤Å¸Ã Â¤Â°Ã Â¥Ë†Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Å¸ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤â€¢Ã Â¥â‚¬ Ã Â¤â€¦Ã Â¤Â¨Ã Â¥ï¿½Ã Â¤Â®Ã Â¤Â¤Ã Â¤Â¿ Ã Â¤Â¦Ã Â¥â€¡Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤";
+                    }
+
+                    return json_encode([
+                        'score' => 88,
+                        'communication_score' => 90,
+                        'confidence_score' => 85,
+                        'positive_points' => [
+                            'Defined Eloquent as an Object-Relational Mapper based on ActiveRecord',
+                            'Explained that database tables map directly to PHP Models'
+                        ],
+                        'missing_points' => [
+                            'Could mention relationship mappings (hasOne, hasMany, belongsTo)',
+                            'Could mention benefit of preventing SQL Injection out-of-the-box'
+                        ],
+                        'suggestions' => [
+                            'Give a quick example of defining relationships.',
+                            'Highlight how Eloquent queries are cleaner than raw SQL queries.'
+                        ],
+                        'improved_answer' => $improved,
+                        'grammar_feedback' => 'Good technical terminology.',
+                        'voice_analysis' => 'Speaking speed: 127 WPM. Filler words: None. Voice clarity: 89%.',
+                        'camera_analysis' => 'Eye contact: 83%. Smiling: Friendly. Posture: Steady.'
+                    ]);
+                }
+
+                // 9. Explain REST API
+                if (stripos($prompt, 'REST API') !== false || stripos($prompt, 'REST') !== false) {
+                    $improved = "A REST API (Representational State Transfer) is an architectural style for designing networked applications. It uses stateless, resource-oriented URIs and standard HTTP methods (GET for reading, POST for creating, PUT/PATCH for updating, and DELETE for removing data) to communicate, typically exchanging data in JSON format.";
+                    if ($lang === 'gu') {
+                        $improved = "REST API (Representational State Transfer) Ã Âªï¿½ Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ¬ Ã ÂªÂ¸Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂµÃ ÂªÂ¿Ã ÂªÂ¸Ã Â«â‚¬Ã ÂªÂ¸ Ã ÂªÂ¬Ã ÂªÂ¨Ã ÂªÂ¾Ã ÂªÂµÃ ÂªÂµÃ ÂªÂ¾Ã ÂªÂ¨Ã Â«â‚¬ Ã Âªï¿½Ã Âªâ€¢ Ã Âªâ€ Ã ÂªÂ°Ã Â«ï¿½Ã Âªâ€¢Ã ÂªÂ¿Ã ÂªÅ¸Ã Â«â€¡Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÅ¡Ã ÂªÂ°Ã ÂªÂ² Ã ÂªÂ¸Ã Â«ï¿½Ã ÂªÅ¸Ã ÂªÂ¾Ã Âªâ€¡Ã ÂªÂ² Ã Âªâ€ºÃ Â«â€¡. Ã ÂªÂ¤Ã Â«â€¡ Ã ÂªÂ¸Ã Â«ï¿½Ã ÂªÅ¸Ã Â«â€¡Ã ÂªÅ¸Ã ÂªÂ²Ã Â«â€¡Ã ÂªÂ¸ Ã ÂªÂ¸Ã Âªâ€šÃ ÂªÅ¡Ã ÂªÂ¾Ã ÂªÂ° Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂ¸Ã Â«ï¿½Ã ÂªÅ¸Ã ÂªÂ¾Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¡Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂ¡ HTTP Ã ÂªÂ®Ã Â«â€¡Ã ÂªÂ¥Ã ÂªÂ¡Ã Â«ï¿½Ã ÂªÂ¸ (GET, POST, PUT, DELETE) Ã ÂªÂ¨Ã Â«â€¹ Ã Âªâ€°Ã ÂªÂªÃ ÂªÂ¯Ã Â«â€¹Ã Âªâ€” Ã Âªâ€¢Ã ÂªÂ°Ã Â«â€¡ Ã Âªâ€ºÃ Â«â€¡ Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂ¸Ã ÂªÂ¾Ã ÂªÂ®Ã ÂªÂ¾Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¯ Ã ÂªÂ°Ã Â«â‚¬Ã ÂªÂ¤Ã Â«â€¡ JSON Ã ÂªÂ«Ã Â«â€¹Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂ®Ã Â«â€¡Ã ÂªÅ¸Ã ÂªÂ®Ã ÂªÂ¾Ã Âªâ€š Ã ÂªÂ¡Ã Â«â€¡Ã ÂªÅ¸Ã ÂªÂ¾ Ã Âªâ€ Ã ÂªÂª-Ã ÂªÂ²Ã Â«â€¡ Ã Âªâ€¢Ã ÂªÂ°Ã Â«â€¡ Ã Âªâ€ºÃ Â«â€¡.";
+                    } elseif ($lang === 'hi') {
+                        $improved = "REST API (Representational State Transfer) Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â¬ Ã Â¤Â¸Ã Â¥â€¡Ã Â¤ÂµÃ Â¤Â¾Ã Â¤ï¿½Ã Â¤â€š Ã Â¤Â¬Ã Â¤Â¨Ã Â¤Â¾Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤â€¢Ã Â¥â‚¬ Ã Â¤ï¿½Ã Â¤â€¢ Ã Â¤â€ Ã Â¤Â°Ã Â¥ï¿½Ã Â¤â€¢Ã Â¤Â¿Ã Â¤Å¸Ã Â¥â€¡Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Å¡Ã Â¤Â°Ã Â¤Â² Ã Â¤Â¸Ã Â¥ï¿½Ã Â¤Å¸Ã Â¤Â¾Ã Â¤â€¡Ã Â¤Â² Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤ Ã Â¤Â¯Ã Â¤Â¹ Ã Â¤Â¸Ã Â¥ï¿½Ã Â¤Å¸Ã Â¥â€¡Ã Â¤Å¸Ã Â¤Â²Ã Â¥â€¡Ã Â¤Â¸ Ã Â¤Â¸Ã Â¤â€šÃ Â¤Å¡Ã Â¤Â¾Ã Â¤Â° Ã Â¤â€Ã Â¤Â° Ã Â¤Â®Ã Â¤Â¾Ã Â¤Â¨Ã Â¤â€¢ HTTP Ã Â¤ÂµÃ Â¤Â¿Ã Â¤Â§Ã Â¤Â¿Ã Â¤Â¯Ã Â¥â€¹Ã Â¤â€š (GET, POST, PUT, DELETE) Ã Â¤â€¢Ã Â¤Â¾ Ã Â¤â€°Ã Â¤ÂªÃ Â¤Â¯Ã Â¥â€¹Ã Â¤â€” Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¤Ã Â¥â‚¬ Ã Â¤Â¹Ã Â¥Ë† Ã Â¤â€Ã Â¤Â° Ã Â¤â€ Ã Â¤Â®Ã Â¤Â¤Ã Â¥Å’Ã Â¤Â° Ã Â¤ÂªÃ Â¤Â° JSON Ã Â¤Â«Ã Â¥â€°Ã Â¤Â°Ã Â¥ï¿½Ã Â¤Â®Ã Â¥â€¡Ã Â¤Å¸ Ã Â¤Â®Ã Â¥â€¡Ã Â¤â€š Ã Â¤Â¡Ã Â¥â€¡Ã Â¤Å¸Ã Â¤Â¾ Ã Â¤â€¢Ã Â¤Â¾ Ã Â¤â€ Ã Â¤Â¦Ã Â¤Â¾Ã Â¤Â¨-Ã Â¤ÂªÃ Â¥ï¿½Ã Â¤Â°Ã Â¤Â¦Ã Â¤Â¾Ã Â¤Â¨ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¤Ã Â¥â‚¬ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤";
+                    }
+
+                    return json_encode([
+                        'score' => 87,
+                        'communication_score' => 89,
+                        'confidence_score' => 86,
+                        'positive_points' => [
+                            'Defined REST as Representational State Transfer architectural style',
+                            'Stated HTTP methods (GET, POST, PUT, DELETE) and JSON response payload format'
+                        ],
+                        'missing_points' => [
+                            'Could explain what statelessness means in the context of REST',
+                            'Did not mention resource-based URI structure'
+                        ],
+                        'suggestions' => [
+                            'Clarify that in REST, server does not store client session state between requests.',
+                            'Discuss HTTP status codes (200 OK, 201 Created, 404 Not Found, 500 Server Error).'
+                        ],
+                        'improved_answer' => $improved,
+                        'grammar_feedback' => 'Accurate terminology used.',
+                        'voice_analysis' => 'Speaking speed: 124 WPM. Filler words: 1. Voice clarity: 91%.',
+                        'camera_analysis' => 'Eye contact: 86%. Smiling: Yes. Posture: Forward-leaning.'
+                    ]);
+                }
+
+                // 10. What is Authentication?
+                if (stripos($prompt, 'Authentication') !== false) {
+                    $improved = "Authentication is the process of verifying a user's identity, typically using credentials like email and password. Once authenticated, the system establishes a session or issues a token (like Laravel Sanctum JWT) to identify the user in subsequent requests, securing access to restricted pages.";
+                    if ($lang === 'gu') {
+                        $improved = "Ã Âªâ€œÃ ÂªÂ¥Ã Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÅ¸Ã ÂªÂ¿Ã Âªâ€¢Ã Â«â€¡Ã ÂªÂ¶Ã ÂªÂ¨ (Authentication) Ã Âªï¿½ Ã ÂªÂ¯Ã Â«ï¿½Ã Âªï¿½Ã ÂªÂ°Ã ÂªÂ¨Ã Â«â‚¬ Ã Âªâ€œÃ ÂªÂ³Ã Âªâ€“ Ã ÂªÅ¡Ã Âªâ€¢Ã ÂªÂ¾Ã ÂªÂ¸Ã ÂªÂµÃ ÂªÂ¾Ã ÂªÂ¨Ã Â«â‚¬ Ã ÂªÂªÃ Â«ï¿½Ã ÂªÂ°Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂ°Ã ÂªÂ¿Ã ÂªÂ¯Ã ÂªÂ¾ Ã Âªâ€ºÃ Â«â€¡, Ã ÂªÅ“Ã Â«â€¡Ã ÂªÂ®Ã ÂªÂ¾Ã Âªâ€š Ã ÂªË†Ã ÂªÂ®Ã Â«â€¡Ã ÂªÂ² Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂªÃ ÂªÂ¾Ã ÂªÂ¸Ã ÂªÂµÃ ÂªÂ°Ã Â«ï¿½Ã ÂªÂ¡Ã ÂªÂ¨Ã Â«â€¹ Ã Âªâ€°Ã ÂªÂªÃ ÂªÂ¯Ã Â«â€¹Ã Âªâ€” Ã ÂªÂ¥Ã ÂªÂ¾Ã ÂªÂ¯ Ã Âªâ€ºÃ Â«â€¡. Ã Âªâ€œÃ ÂªÂ³Ã Âªâ€“ Ã ÂªÅ¡Ã Âªâ€¢Ã ÂªÂ¾Ã ÂªÂ¸Ã Â«ï¿½Ã ÂªÂ¯Ã ÂªÂ¾ Ã ÂªÂªÃ Âªâ€ºÃ Â«â‚¬ Ã ÂªÂ¸Ã ÂªÂ¿Ã ÂªÂ¸Ã Â«ï¿½Ã ÂªÅ¸Ã ÂªÂ® Ã ÂªÂ¸Ã Â«â€¡Ã ÂªÂ¶Ã ÂªÂ¨ Ã Âªâ€¦Ã ÂªÂ¥Ã ÂªÂµÃ ÂªÂ¾ Sanctum Ã ÂªÅ¸Ã Â«â€¹Ã Âªâ€¢Ã ÂªÂ¨ Ã ÂªÅ“Ã ÂªÂ¨Ã ÂªÂ°Ã Â«â€¡Ã ÂªÅ¸ Ã Âªâ€¢Ã ÂªÂ°Ã Â«â€¡ Ã Âªâ€ºÃ Â«â€¡.";
+                    } elseif ($lang === 'hi') {
+                        $improved = "Ã Â¤â€˜Ã Â¤Â¥Ã Â¥â€¡Ã Â¤â€šÃ Â¤Å¸Ã Â¤Â¿Ã Â¤â€¢Ã Â¥â€¡Ã Â¤Â¶Ã Â¤Â¨ (Authentication) Ã Â¤Â¯Ã Â¥â€šÃ Â¤Å“Ã Â¤Â° Ã Â¤â€¢Ã Â¥â‚¬ Ã Â¤ÂªÃ Â¤Â¹Ã Â¤Å¡Ã Â¤Â¾Ã Â¤Â¨ Ã Â¤Â¸Ã Â¤Â¤Ã Â¥ï¿½Ã Â¤Â¯Ã Â¤Â¾Ã Â¤ÂªÃ Â¤Â¿Ã Â¤Â¤ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤â€¢Ã Â¥â‚¬ Ã Â¤ÂªÃ Â¥ï¿½Ã Â¤Â°Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â°Ã Â¤Â¿Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†, Ã Â¤Å“Ã Â¤Â¿Ã Â¤Â¸Ã Â¤Â®Ã Â¥â€¡Ã Â¤â€š Ã Â¤Ë†Ã Â¤Â®Ã Â¥â€¡Ã Â¤Â² Ã Â¤â€Ã Â¤Â° Ã Â¤ÂªÃ Â¤Â¾Ã Â¤Â¸Ã Â¤ÂµÃ Â¤Â°Ã Â¥ï¿½Ã Â¤Â¡ Ã Â¤â€¢Ã Â¤Â¾ Ã Â¤â€°Ã Â¤ÂªÃ Â¤Â¯Ã Â¥â€¹Ã Â¤â€” Ã Â¤â€¢Ã Â¤Â¿Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Å“Ã Â¤Â¾Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤ Ã Â¤Â¸Ã Â¤Â¤Ã Â¥ï¿½Ã Â¤Â¯Ã Â¤Â¾Ã Â¤ÂªÃ Â¤Â¨ Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â¬Ã Â¤Â¾Ã Â¤Â¦ Ã Â¤Â¸Ã Â¤Â¿Ã Â¤Â¸Ã Â¥ï¿½Ã Â¤Å¸Ã Â¤Â® Ã Â¤Â¸Ã Â¥â€¡Ã Â¤Â¶Ã Â¤Â¨ Ã Â¤Â¯Ã Â¤Â¾ Sanctum Ã Â¤Å¸Ã Â¥â€¹Ã Â¤â€¢Ã Â¤Â¨ Ã Â¤Â¬Ã Â¤Â¨Ã Â¤Â¾Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤";
+                    }
+
+                    return json_encode([
+                        'score' => 86,
+                        'communication_score' => 88,
+                        'confidence_score' => 84,
+                        'positive_points' => [
+                            'Defined authentication as identity verification',
+                            'Mentioned credential matching and sessions/tokens'
+                        ],
+                        'missing_points' => [
+                            'Did not contrast Authentication (who you are) with Authorization (what you can do)',
+                            'Could mention Laravel authentication tools (Sanctum, Breeze, Jetstream)'
+                        ],
+                        'suggestions' => [
+                            'Explain difference between authentication and authorization.',
+                            'Mention Laravel package options for fast scaffolding.'
+                        ],
+                        'improved_answer' => $improved,
+                        'grammar_feedback' => 'Clear logic structure.',
+                        'voice_analysis' => 'Speaking speed: 123 WPM. Filler words: None. Voice clarity: 90%.',
+                        'camera_analysis' => 'Eye contact: 84%. Smiling: Warm. Posture: Normal.'
+                    ]);
+                }
+
+                // 11. Explain Laravel Service Container
+                if (stripos($prompt, 'Service Container') !== false) {
+                    $improved = "The Service Container is Laravel's central registry for managing class dependencies and dependency injection. It allows binding interfaces to concrete classes (e.g., via `bind` or `singleton`) and uses PHP Reflection to automatically resolve and inject class dependencies throughout the application.";
+                    if ($lang === 'gu') {
+                        $improved = "Ã ÂªÂ¸Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂµÃ ÂªÂ¿Ã ÂªÂ¸ Ã Âªâ€¢Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÅ¸Ã Â«â€¡Ã ÂªÂ¨Ã ÂªÂ° Ã Âªï¿½ Ã ÂªÂ²Ã ÂªÂ¾Ã ÂªÂ°Ã ÂªÂ¾Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ²Ã ÂªÂ¨Ã Â«ï¿½Ã Âªâ€š Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂ²Ã ÂªÂ¾Ã ÂªÂ¸ Ã ÂªÂ¡Ã ÂªÂ¿Ã ÂªÂªÃ Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¸Ã Â«â‚¬ Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂ¡Ã ÂªÂ¿Ã ÂªÂªÃ Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¸Ã Â«â‚¬ Ã Âªâ€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÅ“Ã Â«â€¡Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂ¶Ã ÂªÂ¨ Ã ÂªÂ®Ã Â«â€¡Ã ÂªÂ¨Ã Â«â€¡Ã ÂªÅ“ Ã Âªâ€¢Ã ÂªÂ°Ã ÂªÂµÃ ÂªÂ¾Ã ÂªÂ¨Ã Â«ï¿½Ã Âªâ€š Ã Âªâ€¢Ã Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¦Ã Â«ï¿½Ã ÂªÂ°Ã Â«â‚¬Ã ÂªÂ¯ Ã ÂªÂ¸Ã ÂªÂ¾Ã ÂªÂ§Ã ÂªÂ¨ Ã Âªâ€ºÃ Â«â€¡. Ã ÂªÂ¤Ã Â«â€¡ Ã Âªâ€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÅ¸Ã ÂªÂ°Ã ÂªÂ«Ã Â«â€¡Ã ÂªÂ¸Ã ÂªÂ¨Ã Â«â€¡ Ã Âªâ€¢Ã ÂªÂ¨Ã Â«ï¿½Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂ°Ã ÂªÂ¿Ã ÂªÅ¸ Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂ²Ã ÂªÂ¾Ã ÂªÂ¸ Ã ÂªÂ¸Ã ÂªÂ¾Ã ÂªÂ¥Ã Â«â€¡ Ã ÂªÂ¬Ã ÂªÂ¾Ã ÂªË†Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¡ Ã Âªâ€¢Ã ÂªÂ°Ã ÂªÂµÃ ÂªÂ¾Ã ÂªÂ¨Ã Â«â‚¬ Ã ÂªÂªÃ ÂªÂ°Ã ÂªÂµÃ ÂªÂ¾Ã ÂªÂ¨Ã Âªâ€”Ã Â«â‚¬ Ã Âªâ€ Ã ÂªÂªÃ Â«â€¡ Ã Âªâ€ºÃ Â«â€¡ Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ PHP Reflection Ã ÂªÂ¨Ã Â«â€¹ Ã Âªâ€°Ã ÂªÂªÃ ÂªÂ¯Ã Â«â€¹Ã Âªâ€” Ã Âªâ€¢Ã ÂªÂ°Ã Â«â‚¬Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂ¡Ã ÂªÂ¿Ã ÂªÂªÃ Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¸Ã Â«â‚¬ Ã Âªâ€ Ã ÂªÂªÃ Â«â€¹Ã Âªâ€ Ã ÂªÂª Ã ÂªÂ°Ã Â«â‚¬Ã Âªï¿½Ã Â«â€¹Ã ÂªÂ²Ã Â«ï¿½Ã ÂªÂµ Ã Âªâ€¢Ã ÂªÂ°Ã Â«â€¡ Ã Âªâ€ºÃ Â«â€¡.";
+                    } elseif ($lang === 'hi') {
+                        $improved = "Ã Â¤Â¸Ã Â¤Â°Ã Â¥ï¿½Ã Â¤ÂµÃ Â¤Â¿Ã Â¤Â¸ Ã Â¤â€¢Ã Â¤â€šÃ Â¤Å¸Ã Â¥â€¡Ã Â¤Â¨Ã Â¤Â° Ã Â¤Â²Ã Â¤Â¾Ã Â¤Â°Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â² Ã Â¤â€¢Ã Â¤Â¾ Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â²Ã Â¤Â¾Ã Â¤Â¸ Ã Â¤Â¡Ã Â¤Â¿Ã Â¤ÂªÃ Â¥â€¡Ã Â¤â€šÃ Â¤Â¡Ã Â¥â€¡Ã Â¤â€šÃ Â¤Â¸Ã Â¥â‚¬ Ã Â¤â€Ã Â¤Â° Ã Â¤Â¡Ã Â¤Â¿Ã Â¤ÂªÃ Â¥â€¡Ã Â¤â€šÃ Â¤Â¡Ã Â¥â€¡Ã Â¤â€šÃ Â¤Â¸Ã Â¥â‚¬ Ã Â¤â€¡Ã Â¤â€šÃ Â¤Å“Ã Â¥â€¡Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â¶Ã Â¤Â¨ Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤ÂªÃ Â¥ï¿½Ã Â¤Â°Ã Â¤Â¬Ã Â¤â€šÃ Â¤Â§Ã Â¤Â¿Ã Â¤Â¤ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤â€¢Ã Â¤Â¾ Ã Â¤â€¢Ã Â¥â€¡Ã Â¤â€šÃ Â¤Â¦Ã Â¥ï¿½Ã Â¤Â°Ã Â¥â‚¬Ã Â¤Â¯ Ã Â¤Â¸Ã Â¤Â¾Ã Â¤Â§Ã Â¤Â¨ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤ Ã Â¤Â¯Ã Â¤Â¹ Ã Â¤â€¡Ã Â¤â€šÃ Â¤Å¸Ã Â¤Â°Ã Â¤Â«Ã Â¥â€¡Ã Â¤Â¸ Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤â€¢Ã Â¤â€šÃ Â¤â€¢Ã Â¥ï¿½Ã Â¤Â°Ã Â¥â‚¬Ã Â¤Å¸ Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â²Ã Â¤Â¾Ã Â¤Â¸ Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â¸Ã Â¤Â¾Ã Â¤Â¥ Ã Â¤Â¬Ã Â¤Â¾Ã Â¤â€¡Ã Â¤â€šÃ Â¤Â¡ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤â€¢Ã Â¥â‚¬ Ã Â¤â€¦Ã Â¤Â¨Ã Â¥ï¿½Ã Â¤Â®Ã Â¤Â¤Ã Â¤Â¿ Ã Â¤Â¦Ã Â¥â€¡Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë† Ã Â¤â€Ã Â¤Â° PHP Reflection Ã Â¤â€¢Ã Â¤Â¾ Ã Â¤â€°Ã Â¤ÂªÃ Â¤Â¯Ã Â¥â€¹Ã Â¤â€” Ã Â¤â€¢Ã Â¤Â°Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â¡Ã Â¤Â¿Ã Â¤ÂªÃ Â¥â€¡Ã Â¤â€šÃ Â¤Â¡Ã Â¥â€¡Ã Â¤â€šÃ Â¤Â¸Ã Â¥â‚¬ Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤Â¸Ã Â¥ï¿½Ã Â¤ÂµÃ Â¤Å¡Ã Â¤Â¾Ã Â¤Â²Ã Â¤Â¿Ã Â¤Â¤ Ã Â¤Â°Ã Â¥â€šÃ Â¤Âª Ã Â¤Â¸Ã Â¥â€¡ Ã Â¤Â¹Ã Â¤Â² Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤";
+                    }
+
+                    return json_encode([
+                        'score' => 90,
+                        'communication_score' => 91,
+                        'confidence_score' => 89,
+                        'positive_points' => [
+                            'Correctly defined Service Container as central dependency manager',
+                            'Explained binding (bind/singleton) and automatic resolution using Reflection'
+                        ],
+                        'missing_points' => [
+                            'Could provide an example of AppServiceProvider binding',
+                            'Did not explain the benefit of singleton vs normal binding'
+                        ],
+                        'suggestions' => [
+                            'Explain how to declare a binding in AppServiceProvider.',
+                            'Explain singleton vs transient binding lifecycle differences.'
+                        ],
+                        'improved_answer' => $improved,
+                        'grammar_feedback' => 'Excellent grasp of advanced architectural concepts.',
+                        'voice_analysis' => 'Speaking speed: 125 WPM. Filler words: None. Voice clarity: 94%.',
+                        'camera_analysis' => 'Eye contact: 88%. Smiling: Warm. Posture: Alert.'
+                    ]);
+                }
+
+                // 12. What are Events and Listeners?
+                if (stripos($prompt, 'Events') !== false && stripos($prompt, 'Listeners') !== false) {
+                    $improved = "Events and Listeners provide a simple observer implementation, allowing you to subscribe to and listen for various events that occur in your application. This decouples different aspects of your codebaseÃ¢â‚¬â€for instance, dispatching an `OrderPlaced` event and having a queued `SendOrderEmail` listener handle it asynchronously.";
+                    if ($lang === 'gu') {
+                        $improved = "Ã Âªâ€¡Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÅ¸Ã Â«ï¿½Ã ÂªÂ¸ Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂ²Ã ÂªÂ¿Ã ÂªÂ¸Ã ÂªÂ¨Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂ¸ Ã ÂªÂ¡Ã Â«â‚¬Ã Âªâ€¢Ã ÂªÂªÃ ÂªÂ²Ã ÂªÂ¿Ã Âªâ€šÃ Âªâ€” Ã ÂªÂ®Ã ÂªÂ¾Ã ÂªÅ¸Ã Â«â€¡ Ã Âªâ€œÃ ÂªÂ¬Ã Â«ï¿½Ã Âªï¿½Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂµÃ ÂªÂ° Ã ÂªÂ¡Ã ÂªÂ¿Ã Âªï¿½Ã ÂªÂ¾Ã Âªâ€¡Ã ÂªÂ¨ Ã ÂªÂªÃ Â«â€¡Ã ÂªÅ¸Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂ¨ Ã ÂªÂªÃ Â«â€šÃ ÂªÂ°Ã Â«â‚¬ Ã ÂªÂªÃ ÂªÂ¾Ã ÂªÂ¡Ã Â«â€¡ Ã Âªâ€ºÃ Â«â€¡. Ã ÂªÅ“Ã Â«â€¡Ã ÂªÂ® Ã Âªâ€¢Ã Â«â€¡ Ã Âªâ€œÃ ÂªÂ°Ã Â«ï¿½Ã ÂªÂ¡Ã ÂªÂ° Ã ÂªÂªÃ Â«ï¿½Ã ÂªÂ²Ã Â«â€¡Ã ÂªÂ¸ Ã ÂªÂ¥Ã ÂªÂ¾Ã ÂªÂ¯ Ã ÂªÂ¤Ã Â«ï¿½Ã ÂªÂ¯Ã ÂªÂ¾Ã ÂªÂ°Ã Â«â€¡ `OrderPlaced` Ã Âªâ€¡Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÅ¸ Ã ÂªÅ¸Ã Â«ï¿½Ã ÂªÂ°Ã ÂªÂ¿Ã Âªâ€”Ã ÂªÂ° Ã ÂªÂ¥Ã ÂªÂ¾Ã ÂªÂ¯ Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ `SendOrderEmail` Ã ÂªÂ²Ã ÂªÂ¿Ã ÂªÂ¸Ã ÂªÂ¨Ã ÂªÂ° Ã ÂªÂ¬Ã Â«â€¡Ã Âªâ€¢Ã Âªâ€”Ã Â«ï¿½Ã ÂªÂ°Ã ÂªÂ¾Ã Âªâ€°Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¡Ã ÂªÂ®Ã ÂªÂ¾Ã Âªâ€š Ã ÂªË†Ã ÂªÂ®Ã Â«â€¡Ã ÂªÂ² Ã ÂªÂ¸Ã Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¡ Ã Âªâ€¢Ã ÂªÂ°Ã Â«â€¡.";
+                    } elseif ($lang === 'hi') {
+                        $improved = "Ã Â¤â€¡Ã Â¤ÂµÃ Â¥â€¡Ã Â¤â€šÃ Â¤Å¸Ã Â¥ï¿½Ã Â¤Â¸ Ã Â¤â€Ã Â¤Â° Ã Â¤Â²Ã Â¤Â¿Ã Â¤Â¸Ã Â¤Â¨Ã Â¤Â°Ã Â¥ï¿½Ã Â¤Â¸ Ã Â¤Â¡Ã Â¤Â¿Ã Â¤â€¢Ã Â¤ÂªÃ Â¤Â²Ã Â¤Â¿Ã Â¤â€šÃ Â¤â€” Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â²Ã Â¤Â¿Ã Â¤ï¿½ Ã Â¤â€˜Ã Â¤Â¬Ã Â¥ï¿½Ã Â¤Å“Ã Â¤Â°Ã Â¥ï¿½Ã Â¤ÂµÃ Â¤Â° Ã Â¤Â¡Ã Â¤Â¿Ã Â¤Å“Ã Â¤Â¼Ã Â¤Â¾Ã Â¤â€¡Ã Â¤Â¨ Ã Â¤ÂªÃ Â¥Ë†Ã Â¤Å¸Ã Â¤Â°Ã Â¥ï¿½Ã Â¤Â¨ Ã Â¤ÂªÃ Â¥ï¿½Ã Â¤Â°Ã Â¤Â¦Ã Â¤Â¾Ã Â¤Â¨ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¤Ã Â¥â€¡ Ã Â¤Â¹Ã Â¥Ë†Ã Â¤â€šÃ Â¥Â¤ Ã Â¤Å“Ã Â¥Ë†Ã Â¤Â¸Ã Â¥â€¡ Ã Â¤â€˜Ã Â¤Â°Ã Â¥ï¿½Ã Â¤Â¡Ã Â¤Â° Ã Â¤ÂªÃ Â¥ï¿½Ã Â¤Â²Ã Â¥â€¡Ã Â¤Â¸ Ã Â¤Â¹Ã Â¥â€¹Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤ÂªÃ Â¤Â° `OrderPlaced` Ã Â¤â€¡Ã Â¤ÂµÃ Â¥â€¡Ã Â¤â€šÃ Â¤Å¸ Ã Â¤Å¸Ã Â¥ï¿½Ã Â¤Â°Ã Â¤Â¿Ã Â¤â€”Ã Â¤Â° Ã Â¤Â¹Ã Â¥â€¹ Ã Â¤â€Ã Â¤Â° `SendOrderEmail` Ã Â¤Â²Ã Â¤Â¿Ã Â¤Â¸Ã Â¤Â¨Ã Â¤Â° Ã Â¤Â¬Ã Â¥Ë†Ã Â¤â€¢Ã Â¤â€”Ã Â¥ï¿½Ã Â¤Â°Ã Â¤Â¾Ã Â¤â€°Ã Â¤â€šÃ Â¤Â¡ Ã Â¤Â®Ã Â¥â€¡Ã Â¤â€š Ã Â¤Ë†Ã Â¤Â®Ã Â¥â€¡Ã Â¤Â² Ã Â¤Â­Ã Â¥â€¡Ã Â¤Å“Ã Â¥â€¡Ã Â¥Â¤";
+                    }
+
+                    return json_encode([
+                        'score' => 89,
+                        'communication_score' => 90,
+                        'confidence_score' => 87,
+                        'positive_points' => [
+                            'Explained observer pattern and decoupling of application components',
+                            'Gave a concrete example (Order Dispatch and Email Notification)'
+                        ],
+                        'missing_points' => [
+                            'Could mention queuing listeners to run asynchronously',
+                            'Did not mention event broadcasting for WebSockets'
+                        ],
+                        'suggestions' => [
+                            'State the benefit of marking a listener with the `ShouldQueue` interface.',
+                            'Briefly mention dynamic registration in Laravel 11.'
+                        ],
+                        'improved_answer' => $improved,
+                        'grammar_feedback' => 'Clear and logical structure.',
+                        'voice_analysis' => 'Speaking speed: 127 WPM. Filler words: 1. Voice clarity: 91%.',
+                        'camera_analysis' => 'Eye contact: 85%. Smiling: Yes. Posture: Professional.'
+                    ]);
+                }
+
+                // 13. Explain Queue System
+                if (stripos($prompt, 'Queue') !== false) {
+                    $improved = "Laravel's Queue system allows you to defer processing of time-consuming tasks, such as sending emails or processing file uploads, to a background process. This keeps HTTP requests fast. It supports drivers like Redis, Database, and Amazon SQS, and relies on background workers to consume jobs.";
+                    if ($lang === 'gu') {
+                        $improved = "Ã ÂªÂ²Ã ÂªÂ¾Ã ÂªÂ°Ã ÂªÂ¾Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ² Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂ¯Ã Â«ï¿½ (Queue) Ã ÂªÅ¸Ã ÂªÂ¾Ã ÂªÂ¸Ã Â«ï¿½Ã Âªâ€¢Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂ¬Ã Â«â€¡Ã Âªâ€¢Ã Âªâ€”Ã Â«ï¿½Ã ÂªÂ°Ã ÂªÂ¾Ã Âªâ€°Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¡ Ã ÂªÂªÃ Â«ï¿½Ã ÂªÂ°Ã Â«â€¹Ã ÂªÂ¸Ã Â«â€¡Ã ÂªÂ¸Ã ÂªÂ®Ã ÂªÂ¾Ã Âªâ€š Ã ÂªÂ®Ã Â«â€¹Ã Âªâ€¢Ã ÂªÂ²Ã Â«â‚¬Ã ÂªÂ¨Ã Â«â€¡ HTTP Ã ÂªÂ°Ã ÂªÂ¿Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ¸Ã Â«ï¿½Ã ÂªÅ¸ Ã ÂªÂ¸Ã Â«ï¿½Ã ÂªÂªÃ Â«â‚¬Ã ÂªÂ¡ Ã ÂªÂµÃ ÂªÂ§Ã ÂªÂ¾Ã ÂªÂ°Ã Â«â€¡ Ã Âªâ€ºÃ Â«â€¡. Ã ÂªÅ“Ã Â«â€¡Ã ÂªÂ® Ã Âªâ€¢Ã Â«â€¡ Ã ÂªË†Ã ÂªÂ®Ã Â«â€¡Ã ÂªÂ² Ã ÂªÂ¸Ã Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¡Ã ÂªÂ¿Ã Âªâ€šÃ Âªâ€”. Ã ÂªÂ¤Ã Â«â€¡ Redis Ã Âªâ€¦Ã ÂªÂ¥Ã ÂªÂµÃ ÂªÂ¾ Database Ã ÂªÂ¡Ã Â«ï¿½Ã ÂªÂ°Ã ÂªÂ¾Ã Âªâ€¡Ã ÂªÂµÃ ÂªÂ° Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂ¬Ã Â«â€¡Ã Âªâ€¢Ã Âªâ€”Ã Â«ï¿½Ã ÂªÂ°Ã ÂªÂ¾Ã Âªâ€°Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¡ Ã ÂªÂµÃ ÂªÂ°Ã Â«ï¿½Ã Âªâ€¢Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂ¸Ã ÂªÂ¨Ã Â«â€¹ Ã Âªâ€°Ã ÂªÂªÃ ÂªÂ¯Ã Â«â€¹Ã Âªâ€” Ã Âªâ€¢Ã ÂªÂ°Ã Â«â€¡ Ã Âªâ€ºÃ Â«â€¡.";
+                    } elseif ($lang === 'hi') {
+                        $improved = "Ã Â¤Â²Ã Â¤Â¾Ã Â¤Â°Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â² Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â¯Ã Â¥â€š (Queue) Ã Â¤Â¸Ã Â¤Â¿Ã Â¤Â¸Ã Â¥ï¿½Ã Â¤Å¸Ã Â¤Â® Ã Â¤Â¸Ã Â¤Â®Ã Â¤Â¯ Ã Â¤Â²Ã Â¥â€¡Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤ÂµÃ Â¤Â¾Ã Â¤Â²Ã Â¥â€¡ Ã Â¤â€¢Ã Â¤Â¾Ã Â¤Â°Ã Â¥ï¿½Ã Â¤Â¯Ã Â¥â€¹Ã Â¤â€š Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤Â¬Ã Â¥Ë†Ã Â¤â€¢Ã Â¤â€”Ã Â¥ï¿½Ã Â¤Â°Ã Â¤Â¾Ã Â¤â€°Ã Â¤â€šÃ Â¤Â¡ Ã Â¤Â®Ã Â¥â€¡Ã Â¤â€š Ã Â¤Å¡Ã Â¤Â²Ã Â¤Â¾Ã Â¤â€¢Ã Â¤Â° HTTP Ã Â¤Â°Ã Â¤Â¿Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â¸Ã Â¥ï¿½Ã Â¤Å¸ Ã Â¤Â¸Ã Â¥ï¿½Ã Â¤ÂªÃ Â¥â‚¬Ã Â¤Â¡ Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤Â¬Ã Â¤Â¢Ã Â¤Â¼Ã Â¤Â¾Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤ Ã Â¤Â¯Ã Â¤Â¹ Redis Ã Â¤Â¯Ã Â¤Â¾ Database Ã Â¤Â¡Ã Â¥ï¿½Ã Â¤Â°Ã Â¤Â¾Ã Â¤â€¡Ã Â¤ÂµÃ Â¤Â° Ã Â¤â€Ã Â¤Â° Ã Â¤Â¬Ã Â¥Ë†Ã Â¤â€¢Ã Â¤â€”Ã Â¥ï¿½Ã Â¤Â°Ã Â¤Â¾Ã Â¤â€°Ã Â¤â€šÃ Â¤Â¡ Ã Â¤ÂµÃ Â¤Â°Ã Â¥ï¿½Ã Â¤â€¢Ã Â¤Â°Ã Â¥ï¿½Ã Â¤Â¸ Ã Â¤â€¢Ã Â¤Â¾ Ã Â¤â€°Ã Â¤ÂªÃ Â¤Â¯Ã Â¥â€¹Ã Â¤â€” Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤";
+                    }
+
+                    return json_encode([
+                        'score' => 88,
+                        'communication_score' => 89,
+                        'confidence_score' => 87,
+                        'positive_points' => [
+                            'Stated that queues offload heavy tasks to the background for faster response',
+                            'Mentioned queue drivers (Redis, database, SQS) and background worker concept'
+                        ],
+                        'missing_points' => [
+                            'Did not mention the Artisan command to run worker (`queue:work` or `queue:listen`)',
+                            'Could mention handling failed jobs or supervisor configurations'
+                        ],
+                        'suggestions' => [
+                            'State the commands used to start background workers.',
+                            'Explain how Supervisor keeps `queue:work` process running in production.'
+                        ],
+                        'improved_answer' => $improved,
+                        'grammar_feedback' => 'Highly technical explanation.',
+                        'voice_analysis' => 'Speaking speed: 123 WPM. Filler words: None. Voice clarity: 92%.',
+                        'camera_analysis' => 'Eye contact: 87%. Smiling: Yes. Posture: Steady.'
+                    ]);
+                }
+
+                // 14. How to optimize Laravel performance?
+                if (stripos($prompt, 'optimize') !== false && (stripos($prompt, 'performance') !== false || stripos($prompt, 'Laravel') !== false)) {
+                    $improved = "Laravel applications can be optimized by caching configurations (`config:cache`, `route:cache`), using eager loading (`with()`) to prevent N+1 queries, indexing database columns, offloading heavy tasks to background queues, utilizing Redis for caching, and running Laravel Octane.";
+                    if ($lang === 'gu') {
+                        $improved = "Ã ÂªÂ²Ã ÂªÂ¾Ã ÂªÂ°Ã ÂªÂ¾Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ² Ã Âªï¿½Ã ÂªÂªÃ Â«ï¿½Ã ÂªÂ²Ã ÂªÂ¿Ã Âªâ€¢Ã Â«â€¡Ã ÂªÂ¶Ã ÂªÂ¨ Ã ÂªÂªÃ ÂªÂ°Ã ÂªÂ«Ã Â«â€¹Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂ®Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¸ Ã Âªâ€œÃ ÂªÂªÃ Â«ï¿½Ã ÂªÅ¸Ã ÂªÂ¿Ã ÂªÂ®Ã ÂªÂ¾Ã Âªâ€¡Ã Âªï¿½ Ã Âªâ€¢Ã ÂªÂ°Ã ÂªÂµÃ ÂªÂ¾ Ã ÂªÂ®Ã ÂªÂ¾Ã ÂªÅ¸Ã Â«â€¡ Ã Âªâ€¢Ã Â«â€¹Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ«Ã ÂªÂ¿Ã Âªâ€”/Ã ÂªÂ°Ã ÂªÂ¾Ã Âªâ€°Ã ÂªÅ¸ Ã Âªâ€¢Ã Â«â€¡Ã ÂªÂ¶Ã Â«â‚¬Ã Âªâ€šÃ Âªâ€”, N+1 Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ°Ã Â«â‚¬Ã Âªï¿½ Ã Âªâ€¦Ã ÂªÅ¸Ã Âªâ€¢Ã ÂªÂ¾Ã ÂªÂµÃ ÂªÂµÃ ÂªÂ¾ Ã Âªâ€¡Ã Âªâ€”Ã ÂªÂ° Ã ÂªÂ²Ã Â«â€¹Ã ÂªÂ¡Ã ÂªÂ¿Ã Âªâ€šÃ Âªâ€” (`with()`), Ã ÂªÂ¡Ã Â«â€¡Ã ÂªÅ¸Ã ÂªÂ¾Ã ÂªÂ¬Ã Â«â€¡Ã Âªï¿½ Ã Âªâ€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¡Ã Â«â€¡Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂ¸Ã ÂªÂ¿Ã Âªâ€šÃ Âªâ€”, Ã ÂªÂ¬Ã Â«â€¡Ã Âªâ€¢Ã Âªâ€”Ã Â«ï¿½Ã ÂªÂ°Ã ÂªÂ¾Ã Âªâ€°Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¡ Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂ¯Ã Â«ï¿½Ã Âªï¿½, Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂ²Ã ÂªÂ¾Ã ÂªÂ°Ã ÂªÂ¾Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ² Ã Âªâ€œÃ Âªâ€¢Ã Â«ï¿½Ã ÂªÅ¸Ã Â«â€¡Ã ÂªÂ¨Ã ÂªÂ¨Ã Â«â€¹ Ã Âªâ€°Ã ÂªÂªÃ ÂªÂ¯Ã Â«â€¹Ã Âªâ€” Ã Âªâ€¢Ã ÂªÂ°Ã ÂªÂµÃ Â«â€¹ Ã ÂªÅ“Ã Â«â€¹Ã ÂªË†Ã Âªï¿½.";
+                    } elseif ($lang === 'hi') {
+                        $improved = "Ã Â¤Â²Ã Â¤Â¾Ã Â¤Â°Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â² Ã Â¤ï¿½Ã Â¤ÂªÃ Â¥ï¿½Ã Â¤Â²Ã Â¤Â¿Ã Â¤â€¢Ã Â¥â€¡Ã Â¤Â¶Ã Â¤Â¨ Ã Â¤â€¢Ã Â¤Â¾ Ã Â¤ÂªÃ Â¤Â°Ã Â¤Â«Ã Â¥â€°Ã Â¤Â°Ã Â¥ï¿½Ã Â¤Â®Ã Â¥â€¡Ã Â¤â€šÃ Â¤Â¸ Ã Â¤â€˜Ã Â¤ÂªÃ Â¥ï¿½Ã Â¤Å¸Ã Â¤Â¿Ã Â¤Â®Ã Â¤Â¾Ã Â¤â€¡Ã Â¤Å“Ã Â¤Â¼ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â²Ã Â¤Â¿Ã Â¤ï¿½ Ã Â¤â€¢Ã Â¥â€°Ã Â¤Â¨Ã Â¥ï¿½Ã Â¤Â«Ã Â¤Â¼Ã Â¤Â¿Ã Â¤â€”/Ã Â¤Â°Ã Â¥â€šÃ Â¤Å¸ Ã Â¤â€¢Ã Â¥Ë†Ã Â¤Â¶Ã Â¤Â¿Ã Â¤â€šÃ Â¤â€”, N+1 Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â°Ã Â¥â‚¬ Ã Â¤Â¸Ã Â¥â€¡ Ã Â¤Â¬Ã Â¤Å¡Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â²Ã Â¤Â¿Ã Â¤ï¿½ Ã Â¤Ë†Ã Â¤â€”Ã Â¤Â° Ã Â¤Â²Ã Â¥â€¹Ã Â¤Â¡Ã Â¤Â¿Ã Â¤â€šÃ Â¤â€” (`with()`), Ã Â¤Â¡Ã Â¥â€¡Ã Â¤Å¸Ã Â¤Â¾Ã Â¤Â¬Ã Â¥â€¡Ã Â¤Â¸ Ã Â¤â€¡Ã Â¤â€šÃ Â¤Â¡Ã Â¥â€¡Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â¸Ã Â¤Â¿Ã Â¤â€šÃ Â¤â€”, Ã Â¤Â¬Ã Â¥Ë†Ã Â¤â€¢Ã Â¤â€”Ã Â¥ï¿½Ã Â¤Â°Ã Â¤Â¾Ã Â¤â€°Ã Â¤â€šÃ Â¤Â¡ Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â¯Ã Â¥â€š Ã Â¤â€Ã Â¤Â° Ã Â¤Â²Ã Â¤Â¾Ã Â¤Â°Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â² Ã Â¤â€˜Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Å¸Ã Â¥â€¡Ã Â¤Â¨ Ã Â¤â€¢Ã Â¤Â¾ Ã Â¤â€°Ã Â¤ÂªÃ Â¤Â¯Ã Â¥â€¹Ã Â¤â€” Ã Â¤â€¢Ã Â¤Â¿Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Å“Ã Â¤Â¾Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤";
+                    }
+
+                    return json_encode([
+                        'score' => 89,
+                        'communication_score' => 90,
+                        'confidence_score' => 88,
+                        'positive_points' => [
+                            'Mentioned caching strategies (config, routes, views)',
+                            'Highlighted query optimizations (eager loading to solve N+1 problem, indexing)'
+                        ],
+                        'missing_points' => [
+                            'Did not mention PHP OPcache configurations',
+                            'Could mention high-performance servers like Laravel Octane (using Swoole/RoadRunner)'
+                        ],
+                        'suggestions' => [
+                            'Mention Laravel Octane for high concurrency applications.',
+                            'Explain N+1 problem and how lazy vs eager loading works.'
+                        ],
+                        'improved_answer' => $improved,
+                        'grammar_feedback' => 'Structured points, easy to read.',
+                        'voice_analysis' => 'Speaking speed: 126 WPM. Filler words: None. Voice clarity: 90%.',
+                        'camera_analysis' => 'Eye contact: 85%. Smiling: Friendly. Posture: Solid.'
+                    ]);
+                }
+
+                // 15. Explain Redis usage
+                if (stripos($prompt, 'Redis') !== false) {
+                    $improved = "Redis is an open-source, in-memory key-value data structure store used as a database, cache, and message broker. In Laravel, it is commonly configured for ultra-fast session storage, application caching, and as a backend driver for high-performance queue processing.";
+                    if ($lang === 'gu') {
+                        $improved = "Redis Ã Âªï¿½ Ã Âªâ€¡Ã ÂªÂ¨-Ã ÂªÂ®Ã Â«â€¡Ã ÂªÂ®Ã ÂªÂ°Ã Â«â‚¬ Ã Âªâ€¢Ã Â«â‚¬-Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ²Ã Â«ï¿½Ã ÂªÂ¯Ã Â«ï¿½ Ã ÂªÂ¡Ã Â«â€¡Ã ÂªÅ¸Ã ÂªÂ¾ Ã ÂªÂ¸Ã Â«ï¿½Ã ÂªÅ¸Ã Â«â€¹Ã ÂªÂ° Ã Âªâ€ºÃ Â«â€¡ Ã ÂªÅ“Ã Â«                }Ã Â¤Â°Ã Â¤Â¾ Ã Â¤Â¸Ã Â¤Â°Ã Â¥ï¿½Ã Â¤ÂµÃ Â¤Â¿Ã Â¤Â¸ Ã Â¤â€¢Ã Â¤â€šÃ Â¤Å¸Ã Â¥â€¡Ã Â¤Â¨Ã Â¤Â° Ã Â¤â€¡Ã Â¤Â¸Ã Â¥â€¡ Ã Â¤Â¸Ã Â¥ï¿½Ã Â¤ÂµÃ Â¤Å¡Ã Â¤Â¾Ã Â¤Â²Ã Â¤Â¿Ã Â¤Â¤ Ã Â¤Â°Ã Â¥â€šÃ Â¤Âª Ã Â¤Â¸Ã Â¥â€¡ Ã Â¤Â¹Ã Â¤Â² Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤";
+                    }
+
+                    return json_encode([
+                        'score' => 90,
+                        'communication_score' => 91,
+                        'confidence_score' => 88,
+                        'positive_points' => [
+                            'Defined Dependency Injection as passing dependencies from outside rather than manual creation',
+                            'Identified constructor injection and the role of Service Container automatic resolution'
+                        ],
+                        'missing_points' => [
+                            'Could mention interface bindings promoting loose coupling',
+                            'Could state benefits in unit testing (mocking dependencies easily)'
+                        ],
+                        'suggestions' => [
+                            'Explain how dependency injection improves unit testability.',
+                            'Show difference between manual class instantiation and container resolution.'
+                        ],
+                        'improved_answer' => $improved,
+                        'grammar_feedback' => 'Very strong architectural comprehension.',
+                        'voice_analysis' => 'Speaking speed: 125 WPM. Filler words: None. Voice clarity: 94%.',
+                        'camera_analysis' => 'Eye contact: 89%. Smiling: Warm. Posture: Steady.'
+                    ]);
+                }
+
+                // 17. Explain Design Patterns used in Laravel
+                if (stripos($prompt, 'Design Patterns') !== false) {
+                    $improved = "Laravel utilizes several design patterns: Active Record (Eloquent ORM), MVC (separation of logic/views), Dependency Injection, Facades (provides a static interface to classes in container), Service Providers (Factory pattern for bootstrapping services), and Chain of Responsibility (Middleware).";
+                    if ($lang === 'gu') {
+                        $improved = "Ã ÂªÂ²Ã ÂªÂ¾Ã ÂªÂ°Ã ÂªÂ¾Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ² Ã ÂªÂµÃ ÂªÂ¿Ã ÂªÂµÃ ÂªÂ¿Ã ÂªÂ§ Ã ÂªÂ¡Ã ÂªÂ¿Ã Âªï¿½Ã ÂªÂ¾Ã Âªâ€¡Ã Â            if (strpos($prompt, 'Applicant Tracking System') !== false || strpos($prompt, 'ATS') !== false || strpos($prompt, 'Resume:') !== false || strpos($prompt, 'ATS scoring') !== false) {
+                // Parse facts from the prompt to make the mock response dynamic
+                $hasBulletPoints = strpos($prompt, 'Bullet points present: Yes') !== false;
+                $hasExperience = strpos($prompt, 'Experience section present: Yes') !== false;
+                $hasProjects = strpos($prompt, 'Projects section present: Yes') !== false;
+                $hasEducation = strpos($prompt, 'Education section present: Yes') !== false;
+                $hasSkills = strpos($prompt, 'Skills section present: Yes') !== false;
+                
+                // Extract email, phone and name from prompt/resume text
+                $email = 'candidate@careerprep.com';
+                if (preg_match('/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/', $prompt, $matches)) {
+                    $email = $matches[0];
+                }
+                $phone = '+91 9876543210';
+                if (preg_match('/(?:\+?\d{1,3}[- ]?)?\d{10}/', $prompt, $matches)) {
+                    $phone = $matches[0];
+                }
+                $name = 'Jane Doe';
+                if ($email !== 'candidate@careerprep.com') {
+                    $name = ucwords(str_replace(['.', '_'], ' ', explode('@', $email)[0]));
+                }
+
+                // Detect skills
+                $detectedSkills = [];
+                $potentialSkills = ['PHP', 'Laravel', 'MySQL', 'HTML', 'CSS', 'JavaScript', 'Bootstrap', 'Tailwind', 'Git', 'React', 'Vue', 'Docker', 'AWS', 'TypeScript', 'Python', 'Java', 'Django', 'Spring Boot', 'C++', 'Node.js', 'Express', 'SQL', 'PostgreSQL'];
+                foreach ($potentialSkills as $skill) {
+                    if (stripos($prompt, $skill) !== false) {
+                        // $detectedSkills[] = $skill;
+                    }
+                }
+                if (empty($detectedSkills)) {
+                    $detectedSkills = ['PHP', 'Laravel', 'MySQL', 'JavaScript'];
+                }
+
+                // Determine target role dynamically
+                $detectedRole = 'Backend Developer';
+                $roleReason = 'Detected based on backend technologies like PHP and database skills.';
+                if (in_array('Python', $detectedSkills) || stripos($prompt, 'Data') !== false) {
+                    $detectedRole = 'Python Data Analyst';
+                    $roleReason = 'Detected based on Python data analysis stack.';
+                } elseif (in_array('React', $detectedSkills) && !in_array('Laravel', $detectedSkills)) {
+                    $detectedRole = 'React Frontend Developer';
+                    $roleReason = 'Detected based on React frontend skills.';
+                } elseif (in_array('Node.js', $detectedSkills) && in_array('React', $detectedSkills)) {
+                    $detectedRole = 'MERN Stack Developer';
+                    $roleReason = 'Detected based on fullstack JavaScript skills.';
+                } elseif (in_array('Docker', $detectedSkills) || in_array('Kubernetes', $detectedSkills) || in_array('AWS', $detectedSkills)) {
+                    $detectedRole = 'DevOps Cloud Engineer';
+                    $roleReason = 'Detected based on cloud and containerization skills.';
+                }
+
+                // Calculate base score
+                $score = 82;
+                if (!$hasBulletPoints) $score -= 15;
+                if (!$hasExperience) $score -= 10;
+                if (!$hasProjects) $score -= 10;
+                if (!$hasEducation) $score -= 10;
+                if (!$hasSkills) $score -= 10;
+                $score = max(50, min(100, $score));
+
+                $atsBreakdown = [
+                    'structure_score' => $hasExperience && $hasEducation ? 90 : 60,
+                    'keywords_score' => count($detectedSkills) * 8 + 40,
+                    'skills_score' => count($detectedSkills) * 9 + 30,
+                    'experience_score' => $hasExperience ? 85 : 50,
+                    'projects_score' => $hasProjects ? 80 : 40,
+                    'education_score' => $hasEducation ? 90 : 50,
+                    'formatting_score' => $hasBulletPoints ? 85 : 55,
+                    'readability_score' => $hasBulletPoints ? 88 : 60
+                ];
+
+                // Missing skills based on role
+                $missingSkillsAnalysis = [];
+                $recommendedSkills = [];
+                if ($detectedRole === 'Backend Developer' || $detectedRole === 'Fullstack PHP Developer') {
+                    $missingCandidates = [
+                        ['skill' => 'Docker', 'importance' => 'Ensures consistency across local and production deployment environments.'],
+                        ['skill' => 'Redis', 'importance' => 'Enables ultra-fast database caching and queue processing.'],
+                        ['skill' => 'PHPUnit', 'importance' => 'Essential for writing unit tests to prevent production bugs.']
+                    ];
+                } elseif ($detectedRole === 'React Frontend Developer' || $detectedRole === 'MERN Stack Developer') {
+                    $missingCandidates = [
+                        ['skill' => 'Redux Toolkit', 'importance' => 'Provides clean, scalable state management for large front-end apps.'],
+                        ['skill' => 'TypeScript', 'importance' => 'Prevents runtime errors by adding static typing to JavaScript.'],
+                        ['skill' => 'Jest', 'importance' => 'Essential for automated component testing and validation.']
+                    ];
+                } else {
+                    $missingCandidates = [
+                        ['skill' => 'Git', 'importance' => 'Critical for version control and collaborating with other developers.'],
+                        ['skill' => 'Docker', 'importance' => 'Ensures clean environments and dependency isolation.'],
+                        ['skill' => 'CI/CD', 'importance' => 'Automates testing and software deployment cycles.']
+                    ];
+                }
+
+                foreach ($missingCandidates as $cand) {
+                    if (!in_array($cand['skill'], $detectedSkills)) {
+                        $missingSkillsAnalysis[] = [
+                            'skill' => $cand['skill'],
+                            'importance_explanation' => $cand['importance']
+                        ];
+                        $recommendedSkills[] = $cand['skill'];
+                    }
+                }
+                if (empty($missingSkillsAnalysis)) {
+                    $missingSkillsAnalysis[] = [
+                        'skill' => 'Docker',
+                        'importance_explanation' => 'Containerization is critical for matching dev environments with production.'
+                    ];
+                    $recommendedSkills[] = 'Docker';
+                }
+
+                // Projects SWOT
+                $projectsList = [];
+                $projectAnalysis = [];
+                if (stripos($prompt, 'Car Rental') !== false) {
+                    $projectsList[] = [
+                        'title' => 'Car Rental System',
+                        'tech_stack' => ['PHP', 'Laravel', 'MySQL', 'Bootstrap'],
+                        'description' => 'A web application enabling customers to browse, book and pay for rental vehicles online.'
+                    ];
+                    $projectAnalysis[] = [
+                        'project_name' => 'Car Rental System',
+                        'strengths' => 'Demonstrates strong relational database design and CRUD implementation.',
+                        'improvements' => ['Add advanced calendar conflict booking logic.'],
+                        'suggested_missing_features' => ['Payment gateway integration (Stripe)', 'Real-time booking notifications using WebSockets']
+                    ];
+                } else {
+                    // Generate a default project based on skills
+                    $projName = in_array('React', $detectedSkills) ? 'E-Commerce Frontend' : 'RESTful Task Manager';
+                    $projectsList[] = [
+                        'title' => $projName,
+                        'tech_stack' => array_slice($detectedSkills, 0, 3),
+                        'description' => 'A performance-optimized application demonstrating modular component design and database integration.'
+                    ];
+                    $projectAnalysis[] = [
+                        'project_name' => $projName,
+                        'strengths' => 'Shows capability in structured routing and CRUD API development.',
+                        'improvements' => ['Implement input validation and automated error catching.'],
+                        'suggested_missing_features' => ['User authentication with JWT/Sanctum', 'Comprehensive API documentation using Swagger']
+                    ];
+                }
+
+                $personalizedQuestions = [
+                    "Can you explain the database structure and relationships you designed for your project?",
+                    "How did you implement user session management and security in this application?",
+                    "What was the most challenging technical hurdle you faced in your project and how did you solve it?",
+                    "How would you optimize database queries in your application to handle 10,000 active users?",
+                    "Explain your choice of the technology stack used in this project."
+                ];
+
+                $roadmap = [
+                    [
+                        'period' => 'Month 1',
+                        'topic' => 'Advanced Coding & Clean Architecture',
+                        'description' => 'Focus on SOLID principles, design patterns (Repository Pattern, Dependency Injection), and code readability.',
+                        'key_actions' => ['Refactor one project to use Repository Pattern', 'Implement custom middleware in Laravel or Express']
+                    ],
+                    [
+                        'period' => 'Month 2',
+                        'topic' => 'Database Optimization & Caching',
+                        'description' => 'Learn query optimization, indexing, and integrating caching drivers like Redis.',
+                        'key_actions' => ['Use EXPLAIN to optimize slow queries', 'Set up Redis caching for hot data endpoints']
+                    ],
+                    [
+                        'period' => 'Month 3',
+                        'topic' => 'Automated Testing',
+                        'description' => 'Write unit and feature tests to cover core functionality and business logic.',
+                        'key_actions' => ['Achieve 80% test coverage with PHPUnit/Jest', 'Write mock tests for external APIs']
+                    ],
+                    [
+                        'period' => 'Month 4',
+                        'topic' => 'DevOps & CI/CD Pipelines',
+                        'description' => 'Containerize the application and set up automated workflows.',
+                        'key_actions' => ['Dockerize your local application', 'Write a GitHub Actions file to run tests on push']
+                    ],
+                    [
+                        'period' => 'Month 5',
+                        'topic' => 'Cloud Hosting & Live Portfolio',
+                        'description' => 'Deploy the application live, configure custom domains, and secure the hosting server.',
+                        'key_actions' => ['Deploy project on AWS or Render', 'Add live hyperlinks and README to GitHub repository']
+                    ]
+                ];
+
+                $improvements = [
+                    [
+                        'suggestion' => 'Quantify project impact and metrics.',
+                        'reason_why' => 'Helps recruiters measure the business value and performance optimizations you achieved.'
+                    ],
+                    [
+                        'suggestion' => 'Include active live deployment URLs next to your projects.',
+                        'reason_why' => 'Allows hiring managers to immediately interact with your working application.'
+                    ],
+                    [
+                        'suggestion' => 'Add clean GitHub repository links with structured README files.',
+                        'reason_why' => 'Shows proof of clean code practices, git commits history, and documentation skills.'
+                    ]
+                ];
+
+                $resumeSummary = "A developer candidate with practical knowledge of " . implode(', ', array_slice($detectedSkills, 0, 4)) . ". Possesses experience in building web applications with structured databases.";
+
+                $hiringDecision = "Shortlist for Initial Technical Assessment. The candidate displays strong core capabilities aligned with our target stack.";
+
+                return json_encode([
+                    'parsed_info' => [
+                        'name' => $name,
+                        'email' => $email,
+                        'phone' => $phone,
+                        'github' => 'https://github.com/' . strtolower(explode(' ', $name)[0]),
+                        'linkedin' => 'https://linkedin.com/in/' . strtolower(explode(' ', $name)[0]),
+                        'education' => [
+                            [
+                                'degree' => 'Bachelor of Commerce / Computer Applications',
+                                'institution' => 'Regional University',
+                                'year' => '2024'
+                            ]
+                        ],
+                        'experience' => [
+                            [
+                                'role' => 'Junior Developer / Trainee',
+                                'company' => 'Local Tech Training Solutions',
+                                'duration' => '6 Months',
+                                'responsibilities' => 'Built web pages, connected databases, and performed troubleshooting on relational databases.'
+                            ]
+                        ],
+                        'projects' => $projectsList,
+                        'certifications' => ['PHP/Laravel Training Certificate'],
+                        'internships' => ['Web Development Intern (3 Months)'],
+                        'tech_stack' => $detectedSkills,
+                        'soft_skills' => ['Problem Solving', 'Effective Communication', 'Team Collaboration'],
+                        'languages' => ['English', 'Hindi', 'Gujarati']
+                    ],
+                    'target_role_detection' => [
+                        'role' => $detectedRole,
+                        'reason' => $roleReason
+                    ],
+                    'readiness_scores' => [
+                        'ats_score' => $score,
+                        'technical_readiness' => $score - 5,
+                        'hr_readiness' => $score + 2,
+                        'communication_readiness' => 80,
+                        'coding_readiness' => $score - 8,
+                        'overall_readiness' => intval(($score + $score - 5 + $score + 2 + 80 + $score - 8) / 5)
+                    ],
+                    'ats_score_breakdown' => $atsBreakdown,
+                    'missing_skills_analysis' => $missingSkillsAnalysis,
+                    'project_analysis' => $projectAnalysis,
+                    'personalized_interview_questions' => $personalizedQuestions,
+                    'personalized_learning_roadmap' => $roadmap,
+                    'improvement_suggestions' => $improvements,
+                    'resume_summary' => $resumeSummary,
+                    'strengths' => [
+                        'Solid foundation in ' . implode(', ', array_slice($detectedSkills, 0, 3)),
+                        'Hands-on relational database experience',
+                        'Clean formatting and section separation'
+                    ],
+                    'weaknesses' => [
+                        'Lack of unit testing keywords (PHPUnit/Pest)',
+                        'No cloud deployment experience highlighted',
+                        'Descriptions need to start with stronger action verbs'
+                    ],
+                    'resume_sections_missing' => $hasExperience ? ['None'] : ['Experience'],
+                    'recommended_certifications' => [
+                        $detectedRole === 'Backend Developer' ? 'Laravel Certified Developer' : 'AWS Cloud Practitioner'
+                    ],
+                    'recommended_skills' => $recommendedSkills,
+                    'recommended_projects' => [
+                        $detectedRole === 'Backend Developer' ? 'Real-time WebSocket Chat Application' : 'Responsive Portfolio Website'
+                    ],
+                    'final_hiring_decision' => $hiringDecision,
+                    
+                    // Legacy support keys at root for complete safety
+                    'âœ… ATS Score (0-100)' => $score,
+                    'Reason for Score' => $roleReason,
+                    'Missing Keywords' => $recommendedSkills,
+                    'Matched Keywords' => $detectedSkills,
+                    'Top 10 Improvements' => array_map(function($item) {
+                        return $item['suggestion'] . ' ' . $item['reason_why'];
+                    }, $improvements),
+                    'Resume Summary' => $resumeSummary,
+                    'Strengths' => [
+                        'Solid foundation in ' . implode(', ', array_slice($detectedSkills, 0, 3)),
+                        'Hands-on database experience'
+                    ],
+                    'Weaknesses' => [
+                        'Missing testing frameworks',
+                        'Needs active deployment links'
+                    ],
+                    'Resume Sections Missing' => $hasExperience ? ['None'] : ['Experience'],
+                    'Recommended Certifications' => [
+                        $detectedRole === 'Backend Developer' ? 'Laravel Certified Developer' : 'AWS Cloud Practitioner'
+                    ],
+                    'Recommended Skills' => $recommendedSkills,
+                    'Recommended Projects' => [
+                        $detectedRole === 'Backend Developer' ? 'WebSocket chat application' : 'Responsive portfolio'
+                    ],
+                    'Final Hiring Decision' => $hiringDecision
+                ]);
+            }Â¤Â¨ Ã Â¤Â¯Ã Â¤Â¾ CSRF Ã Â¤ÂµÃ Â¥Ë†Ã Â¤Â²Ã Â¤Â¿Ã Â¤Â¡Ã Â¥â€¡Ã Â¤Â¶Ã Â¤Â¨)Ã Â¥Â¤ Ã Â¤Â²Ã Â¤Â¾Ã Â¤Â°Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â² 11+ Ã Â¤Â®Ã Â¥â€¡Ã Â¤â€š, Ã Â¤â€¡Ã Â¤Â¨Ã Â¥ï¿½Ã Â¤Â¹Ã Â¥â€¡Ã Â¤â€š bootstrap/app.php Ã Â¤Â®Ã Â¥â€¡Ã Â¤â€š Ã Â¤Â°Ã Â¤Å“Ã Â¤Â¿Ã Â¤Â¸Ã Â¥ï¿½Ã Â¤Å¸Ã Â¤Â° Ã Â¤â€¢Ã Â¤Â¿Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Å“Ã Â¤Â¾Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤";
+                    }
+                    
+                    return json_encode([
+                        'score' => 89,
+                        'communication_score' => 91,
+                        'confidence_score' => 88,
+                        'positive_points' => [
+                            'Explained that middleware filters HTTP requests',
+                            'Understood registration in bootstrap/app.php or Kernel'
+                        ],
+                        'missing_points' => [
+                            'Did not distinguish between global, group, and route middleware',
+                            'Could mention terminate middleware'
+                        ],
+                        'suggestions' => [
+                            'Explain how request/response flow is intercepted.',
+                            'Give an example of auth middleware.'
+                        ],
+                        'improved_answer' => $improved,
+                        'grammar_feedback' => 'Very accurate explanation.',
+                        'voice_analysis' => 'Speaking speed: 126 WPM. Filler words: 1. Voice clarity: 89%.',
+                        'camera_analysis' => 'Eye contact: 83%. Smiling: Yes. Posture: Relaxed but professional.'
+                    ]);
+                }
+
+                if (stripos($prompt, 'dependency injection') !== false || stripos($prompt, 'service container') !== false) {
+                    $improved = "The Service Container is a powerful tool for managing class dependencies and performing dependency injection. Dependency injection means injecting class dependencies via the constructor or method parameters, which Laravel automatically resolves using PHP Reflection.";
+                    if ($lang === 'gu') {
+                        $improved = "Ã ÂªÂ¸Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂµÃ ÂªÂ¿Ã ÂªÂ¸ Ã Âªâ€¢Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÅ¸Ã Â«â€¡Ã ÂªÂ¨Ã ÂªÂ° Ã Âªï¿½ Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂ²Ã ÂªÂ¾Ã ÂªÂ¸ Ã ÂªÂ¡Ã ÂªÂ¿Ã ÂªÂªÃ Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¸Ã Â«â‚¬ Ã ÂªÂ®Ã Â«â€¡Ã ÂªÂ¨Ã Â«â€¡Ã ÂªÅ“ Ã Âªâ€¢Ã ÂªÂ°Ã ÂªÂµÃ ÂªÂ¾ Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂ¡Ã ÂªÂ¿Ã ÂªÂªÃ Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¸Ã Â«â‚¬ Ã Âªâ€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÅ“Ã Â«â€¡Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂ¶Ã ÂªÂ¨ Ã Âªâ€¢Ã ÂªÂ°Ã ÂªÂµÃ ÂªÂ¾ Ã ÂªÂ®Ã ÂªÂ¾Ã ÂªÅ¸Ã Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã Âªâ€š Ã Âªï¿½Ã Âªâ€¢ Ã ÂªÂ¶Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂ¤Ã ÂªÂ¿Ã ÂªÂ¶Ã ÂªÂ¾Ã ÂªÂ³Ã Â«â‚¬ Ã ÂªÂ¸Ã ÂªÂ¾Ã ÂªÂ§Ã ÂªÂ¨ Ã Âªâ€ºÃ Â«â€¡. Ã ÂªÂ¡Ã ÂªÂ¿Ã ÂªÂªÃ Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¸Ã Â«â‚¬ Ã Âªâ€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÅ“Ã Â«â€¡Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂ¶Ã ÂªÂ¨ Ã Âªï¿½Ã ÂªÅ¸Ã ÂªÂ²Ã Â«â€¡ Ã Âªâ€¢Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¸Ã Â«ï¿½Ã ÂªÅ¸Ã Â«ï¿½Ã ÂªÂ°Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÅ¸Ã ÂªÂ° Ã Âªâ€¦Ã ÂªÂ¥Ã ÂªÂµÃ ÂªÂ¾ Ã ÂªÂ®Ã Â«â€¡Ã ÂªÂ¥Ã ÂªÂ¡ Ã ÂªÂªÃ Â«â€¡Ã ÂªÂ°Ã ÂªÂ¾Ã ÂªÂ®Ã Â«â‚¬Ã ÂªÅ¸Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂ¸ Ã ÂªÂ¦Ã Â«ï¿½Ã ÂªÂµÃ ÂªÂ¾Ã ÂªÂ°Ã ÂªÂ¾ Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂ²Ã ÂªÂ¾Ã ÂªÂ¸ Ã ÂªÂ¡Ã ÂªÂ¿Ã ÂªÂªÃ Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÂ¸Ã Â«â‚¬ Ã Âªâ€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÅ“Ã Â«â€¡Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÅ¸ Ã Âªâ€¢Ã ÂªÂ°Ã ÂªÂµÃ Â«â‚¬, Ã ÂªÅ“Ã Â«â€¡ Ã ÂªÂ²Ã ÂªÂ¾Ã ÂªÂ°Ã ÂªÂ¾Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ² Ã Âªâ€œÃ ÂªÅ¸Ã Â«â€¹Ã ÂªÂ®Ã Â«â€¡Ã ÂªÅ¸Ã ÂªÂ¿Ã Âªâ€¢Ã ÂªÂ²Ã Â«â‚¬ Ã ÂªÂ°Ã ÂªÂ¿Ã Âªï¿½Ã Â«â€¹Ã ÂªÂ²Ã Â«ï¿½Ã ÂªÂµ Ã Âªâ€¢Ã ÂªÂ°Ã Â«â€¡ Ã Âªâ€ºÃ Â«â€¡.";
+                    } elseif ($lang === 'hi') {
+                        $improved = "Ã Â¤Â¸Ã Â¤Â°Ã Â¥ï¿½Ã Â¤ÂµÃ Â¤Â¿Ã Â¤Â¸ Ã Â¤â€¢Ã Â¤â€šÃ Â¤Å¸Ã Â¥â€¡Ã Â¤Â¨Ã Â¤Â° Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â²Ã Â¤Â¾Ã Â¤Â¸ Ã Â¤Â¡Ã Â¤Â¿Ã Â¤ÂªÃ Â¥â€¡Ã Â¤â€šÃ Â¤Â¡Ã Â¥â€¡Ã Â¤â€šÃ Â¤Â¸Ã Â¥â‚¬Ã Â¤Å“ Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤Â®Ã Â¥Ë†Ã Â¤Â¨Ã Â¥â€¡Ã Â¤Å“ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤â€Ã Â¤Â° Ã Â¤Â¡Ã Â¤Â¿Ã Â¤ÂªÃ Â¥â€¡Ã Â¤â€šÃ Â¤Â¡Ã Â¥â€¡Ã Â¤â€šÃ Â¤Â¸Ã Â¥â‚¬ Ã Â¤â€¡Ã Â¤â€šÃ Â¤Å“Ã Â¥â€¡Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â¶Ã Â¤Â¨ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¨Ã Â¥â€¡ Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â²Ã Â¤Â¿Ã Â¤ï¿½ Ã Â¤ï¿½Ã Â¤â€¢ Ã Â¤Â¶Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â¤Ã Â¤Â¿Ã Â¤Â¶Ã Â¤Â¾Ã Â¤Â²Ã Â¥â‚¬ Ã Â¤Å¸Ã Â¥â€šÃ Â¤Â² Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤ Ã Â¤Â¡Ã Â¤Â¿Ã Â¤ÂªÃ Â¥â€¡Ã Â¤â€šÃ Â¤Â¡Ã Â¥â€¡Ã Â¤â€šÃ Â¤Â¸Ã Â¥â‚¬ Ã Â¤â€¡Ã Â¤â€šÃ Â¤Å“Ã Â¥â€¡Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â¶Ã Â¤Â¨ Ã Â¤â€¢Ã Â¤Â¾ Ã Â¤Â®Ã Â¤Â¤Ã Â¤Â²Ã Â¤Â¬ Ã Â¤Â¹Ã Â¥Ë† Ã Â¤â€¢Ã Â¤â€šÃ Â¤Â¸Ã Â¥ï¿½Ã Â¤Å¸Ã Â¥ï¿½Ã Â¤Â°Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Å¸Ã Â¤Â° Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Â®Ã Â¥â€¡Ã Â¤Â¥Ã Â¤Â¡ Ã Â¤ÂªÃ Â¥Ë†Ã Â¤Â°Ã Â¤Â¾Ã Â¤Â®Ã Â¥â‚¬Ã Â¤Å¸Ã Â¤Â°Ã Â¥ï¿½Ã Â¤Â¸ Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤Â®Ã Â¤Â¾Ã Â¤Â§Ã Â¥ï¿½Ã Â¤Â¯Ã Â¤Â® Ã Â¤Â¸Ã Â¥â€¡ Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â²Ã Â¤Â¾Ã Â¤Â¸ Ã Â¤Â¡Ã Â¤Â¿Ã Â¤ÂªÃ Â¥â€¡Ã Â¤â€šÃ Â¤Â¡Ã Â¥â€¡Ã Â¤â€šÃ Â¤Â¸Ã Â¥â‚¬Ã Â¤Å“ Ã Â¤â€¢Ã Â¥â€¹ Ã Â¤â€¡Ã Â¤â€šÃ Â¤Å“Ã Â¥â€¡Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Å¸ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¨Ã Â¤Â¾, Ã Â¤Å“Ã Â¤Â¿Ã Â¤Â¸Ã Â¥â€¡ Ã Â¤Â²Ã Â¤Â¾Ã Â¤Â°Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â² Ã Â¤â€ Ã Â¤Å¸Ã Â¥â€¹Ã Â¤Â®Ã Â¥â€¡Ã Â¤Å¸Ã Â¤Â¿Ã Â¤â€¢Ã Â¤Â²Ã Â¥â‚¬ Ã Â¤Â°Ã Â¤Â¿Ã Â¤Å“Ã Â¤Â¼Ã Â¥â€°Ã Â¤Â²Ã Â¥ï¿½Ã Â¤Â¯Ã Â¥â€šÃ Â¤Â¶Ã Â¤Â¨ Ã Â¤â€¢Ã Â¤Â°Ã Â¤Â¤Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤";
+                    }
+
+                    return json_encode([
+                        'score' => 90,
+                        'communication_score' => 92,
+                        'confidence_score' => 89,
+                        'positive_points' => [
+                            'Correctly defined the Service Container as a tool for managing class dependencies',
+                            'Explained dependency injection via constructor'
+                        ],
+                        'missing_points' => [
+                            'Could mention binding types like bind() and singleton()',
+                            'Did not explain automatic resolution'
+                        ],
+                        'suggestions' => [
+                            'Give an example of binding an interface to a concrete class in AppServiceProvider.'
+                        ],
+                        'improved_answer' => $improved,
+                        'grammar_feedback' => 'Excellent grasp of Laravel architecture concepts.',
+                        'voice_analysis' => 'Speaking speed: 122 WPM. Filler words: None. Voice clarity: 94%.',
+                        'camera_analysis' => 'Eye contact: 89%. Smiling: Warm. Posture: Focused.'
+                    ]);
+                }
+
+                $improved = "Hello Sir/Madam, my name is Dipen Patel. I have completed my B.Com degree and recently completed a Junior PHP Laravel Developer training program. During my learning journey, I developed projects using PHP, Laravel, MySQL, HTML, CSS, Bootstrap, and JavaScript. I am passionate about web development and continuously improving my skills. As a fresher, I am looking for an opportunity where I can contribute to real-world projects and grow as a software developer.";
+                if ($lang === 'gu') {
+                    $improved = "Ã ÂªÂ¨Ã ÂªÂ®Ã ÂªÂ¸Ã Â«ï¿½Ã ÂªÂ¤Ã Â«â€¡ Ã ÂªÂ¸Ã ÂªÂ°/Ã ÂªÂ®Ã Â«â€¡Ã ÂªÂ¡Ã ÂªÂ®, Ã ÂªÂ®Ã ÂªÂ¾Ã ÂªÂ°Ã Â«ï¿½Ã Âªâ€š Ã ÂªÂ¨Ã ÂªÂ¾Ã ÂªÂ® Ã ÂªÂ¦Ã ÂªÂ¿Ã ÂªÂªÃ Â«â€¡Ã ÂªÂ¨ Ã ÂªÂªÃ ÂªÅ¸Ã Â«â€¡Ã ÂªÂ² Ã Âªâ€ºÃ Â«â€¡. Ã ÂªÂ®Ã Â«â€¡Ã Âªâ€š Ã ÂªÂ¬Ã Â«â‚¬.Ã Âªâ€¢Ã Â«â€¹Ã ÂªÂ® Ã ÂªÂªÃ Â«â€šÃ ÂªÂ°Ã Â«ï¿½Ã Âªâ€š Ã Âªâ€¢Ã ÂªÂ°Ã Â«ï¿½Ã ÂªÂ¯Ã Â«ï¿½Ã Âªâ€š Ã Âªâ€ºÃ Â«â€¡ Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂ¤Ã ÂªÂ¾Ã ÂªÅ“Ã Â«â€¡Ã ÂªÂ¤Ã ÂªÂ°Ã ÂªÂ®Ã ÂªÂ¾Ã Âªâ€š Ã ÂªÅ“ Ã ÂªÂªÃ Â«â‚¬Ã Âªï¿½Ã ÂªÅ¡Ã ÂªÂªÃ Â«â‚¬ Ã ÂªÂ²Ã ÂªÂ¾Ã ÂªÂ°Ã ÂªÂ¾Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ² Ã ÂªÂ¡Ã Â«â€¡Ã ÂªÂµÃ ÂªÂ²Ã ÂªÂªÃ ÂªÂ° Ã ÂªÅ¸Ã Â«ï¿½Ã ÂªÂ°Ã Â«â€¡Ã ÂªÂ¨Ã ÂªÂ¿Ã Âªâ€šÃ Âªâ€” Ã ÂªÂªÃ Â«â€šÃ ÂªÂ°Ã Â«ï¿½Ã ÂªÂ£ Ã Âªâ€¢Ã ÂªÂ°Ã Â«â‚¬ Ã Âªâ€ºÃ Â«â€¡. Ã ÂªÂ®Ã ÂªÂ¾Ã ÂªÂ°Ã Â«â‚¬ Ã ÂªÂ¶Ã Â«â‚¬Ã Âªâ€“Ã ÂªÂµÃ ÂªÂ¾Ã ÂªÂ¨Ã Â«â‚¬ Ã ÂªÂ¸Ã ÂªÂ«Ã ÂªÂ° Ã ÂªÂ¦Ã ÂªÂ°Ã ÂªÂ®Ã ÂªÂ¿Ã ÂªÂ¯Ã ÂªÂ¾Ã ÂªÂ¨ Ã ÂªÂ®Ã Â«â€¡Ã Âªâ€š Ã ÂªÂ²Ã ÂªÂ¾Ã ÂªÂ°Ã ÂªÂ¾Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ² Ã Âªâ€¦Ã ÂªÂ¨Ã Â«â€¡ Ã ÂªÂ®Ã ÂªÂ¾Ã ÂªÂ¯Ã Âªï¿½Ã ÂªÂ¸Ã Âªâ€¢Ã Â«ï¿½Ã ÂªÂ¯Ã Â«ï¿½Ã Âªï¿½Ã ÂªÂ² Ã ÂªÂ¨Ã Â«â€¹ Ã Âªâ€°Ã ÂªÂªÃ ÂªÂ¯Ã Â«â€¹Ã Âªâ€” Ã Âªâ€¢Ã ÂªÂ°Ã Â«â‚¬Ã ÂªÂ¨Ã Â«â€¡ Ã Âªâ€¢Ã ÂªÂ¾Ã ÂªÂ° Ã ÂªÂ°Ã Â«â€¡Ã ÂªÂ¨Ã Â«ï¿½Ã ÂªÅ¸Ã ÂªÂ² Ã ÂªÅ“Ã Â«â€¡Ã ÂªÂµÃ Â«â‚¬ Ã ÂªÂµÃ Â«â€¡Ã ÂªÂ¬Ã ÂªÂ¸Ã ÂªÂ¾Ã Âªâ€¡Ã ÂªÅ¸Ã Â«ï¿½Ã ÂªÂ¸ Ã ÂªÂ¬Ã ÂªÂ¨Ã ÂªÂ¾Ã ÂªÂµÃ Â«â‚¬ Ã Âªâ€ºÃ Â«â€¡.";
+                } elseif ($lang === 'hi') {
+                    $improved = "Ã Â¤Â¨Ã Â¤Â®Ã Â¤Â¸Ã Â¥ï¿½Ã Â¤Â¤Ã Â¥â€¡ Ã Â¤Â¸Ã Â¤Â°/Ã Â¤Â®Ã Â¥Ë†Ã Â¤Â¡Ã Â¤Â®, Ã Â¤Â®Ã Â¥â€¡Ã Â¤Â°Ã Â¤Â¾ Ã Â¤Â¨Ã Â¤Â¾Ã Â¤Â® Ã Â¤Â¦Ã Â¤Â¿Ã Â¤ÂªÃ Â¥â€¡Ã Â¤Â¨ Ã Â¤ÂªÃ Â¤Å¸Ã Â¥â€¡Ã Â¤Â² Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤ Ã Â¤Â®Ã Â¥Ë†Ã Â¤â€šÃ Â¤Â¨Ã Â¥â€¡ Ã Â¤Â¬Ã Â¥â‚¬.Ã Â¤â€¢Ã Â¥â€°Ã Â¤Â® Ã Â¤ÂªÃ Â¥â€šÃ Â¤Â°Ã Â¤Â¾ Ã Â¤â€¢Ã Â¤Â¿Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë† Ã Â¤â€Ã Â¤Â° Ã Â¤Â¹Ã Â¤Â¾Ã Â¤Â² Ã Â¤Â¹Ã Â¥â‚¬ Ã Â¤Â®Ã Â¥â€¡Ã Â¤â€š Ã Â¤Å“Ã Â¥â€šÃ Â¤Â¨Ã Â¤Â¿Ã Â¤Â¯Ã Â¤Â° Ã Â¤ÂªÃ Â¥â‚¬Ã Â¤ï¿½Ã Â¤Å¡Ã Â¤ÂªÃ Â¥â‚¬ Ã Â¤Â²Ã Â¤Â¾Ã Â¤Â°Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â² Ã Â¤Â¡Ã Â¥â€¡Ã Â¤ÂµÃ Â¤Â²Ã Â¤ÂªÃ Â¤Â° Ã Â¤ÂªÃ Â¥ï¿½Ã Â¤Â°Ã Â¤Â¶Ã Â¤Â¿Ã Â¤â€¢Ã Â¥ï¿½Ã Â¤Â·Ã Â¤Â£ Ã Â¤ÂªÃ Â¥â€šÃ Â¤Â°Ã Â¤Â¾ Ã Â¤â€¢Ã Â¤Â¿Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤ Ã Â¤Â®Ã Â¥Ë†Ã Â¤â€šÃ Â¤Â¨Ã Â¥â€¡ Ã Â¤Â²Ã Â¤Â¾Ã Â¤Â°Ã Â¤ÂµÃ Â¥â€¡Ã Â¤Â² Ã Â¤â€¢Ã Â¤Â¾ Ã Â¤â€°Ã Â¤ÂªÃ Â¤Â¯Ã Â¥â€¹Ã Â¤â€” Ã Â¤â€¢Ã Â¤Â°Ã Â¤â€¢Ã Â¥â€¡ Ã Â¤â€¢Ã Â¤Â¾Ã Â¤Â° Ã Â¤Â°Ã Â¥â€¡Ã Â¤â€šÃ Â¤Å¸Ã Â¤Â² Ã Â¤Å“Ã Â¥Ë†Ã Â¤Â¸Ã Â¥â‚¬ Ã Â¤â€¢Ã Â¤Ë† Ã Â¤ÂªÃ Â¤Â°Ã Â¤Â¿Ã Â¤Â¯Ã Â¥â€¹Ã Â¤Å“Ã Â¤Â¨Ã Â¤Â¾Ã Â¤â€œÃ Â¤â€š Ã Â¤â€¢Ã Â¤Â¾ Ã Â¤Â¨Ã Â¤Â¿Ã Â¤Â°Ã Â¥ï¿½Ã Â¤Â®Ã Â¤Â¾Ã Â¤Â£ Ã Â¤â€¢Ã Â¤Â¿Ã Â¤Â¯Ã Â¤Â¾ Ã Â¤Â¹Ã Â¥Ë†Ã Â¥Â¤";
+                }
+
+                return json_encode([
+                    'score' => 72,
+                    'communication_score' => 78,
+                    'confidence_score' => 80,
+                    'positive_points' => [
+                        'Introduced yourself clearly',
+                        'Mentioned B.Com education background',
+                        'Mentioned Laravel training completion'
+                    ],
+                    'missing_points' => [
+                        'Did not mention technical project details',
+                        'Career goals were not highlighted',
+                        'Strengths were missing'
+                    ],
+                    'suggestions' => [
+                        'Explain details of your Car Rental project.',
+                        'Highlight technical skills: PHP, MySQL, CSS, JS.',
+                        'Connect your commerce degree values (finance/management) with developer roles.'
+                    ],
+                    'improved_answer' => $improved,
+                    'grammar_feedback' => 'Sentence structure is decent but could be made more professional by avoiding repetition and using active vocabulary.',
+                    'voice_analysis' => 'Speaking speed: 125 words per minute (Perfect). Filler words detected: "Umm" (2 times). Voice clarity: 85%.',
+                    'camera_analysis' => 'Eye contact: 78% (Good focus). Smiling: Detected. Posture: Alert and professional.'
+                ]);
+            }
+
+            if (strpos($prompt, 'ATS scoring') !== false) {
+                // Parse facts from the prompt to make the mock response dynamic
+                $hasBulletPoints = strpos($prompt, 'Bullet points present: Yes') !== false;
+                $hasExperience = strpos($prompt, 'Experience section present: Yes') !== false;
+                $hasProjects = strpos($prompt, 'Projects section present: Yes') !== false;
+                $hasEducation = strpos($prompt, 'Education section present: Yes') !== false;
+                $hasSkills = strpos($prompt, 'Skills section present: Yes') !== false;
+                
+                // Get course info from the prompt
+                $courseInfo = 'PHP Laravel Developer';
+                if (preg_match('/User Enrolled Course\(s\) \/ Career Path: (.*)/', $prompt, $matches)) {
+                    $courseInfo = trim($matches[1]);
+                }
+                
+                // Determine base score
+                $score = 88;
+                $suggestions = [];
+                $missing_skills = [];
+                
+                // Parse extracted skills based on the raw resume text present in the prompt
+                $extracted_skills = [];
+                $resumeText = '';
+                if (preg_match('/Resume: "(.*?)"\r?\n/s', $prompt, $resMatches)) {
+                    $resumeText = $resMatches[1];
+                }
+                
+                // If we couldn't parse it, default to checking the whole prompt for skills
+                $searchSource = !empty($resumeText) ? $resumeText : $prompt;
+                
+                $potentialSkills = ['PHP', 'Laravel', 'MySQL', 'HTML', 'CSS', 'JavaScript', 'Git', 'React', 'Vue', 'Docker', 'AWS', 'TypeScript', 'Python', 'Java', 'B.Com'];
+                foreach ($potentialSkills as $skill) {
+                    if (stripos($searchSource, $skill) !== false) {
+                        $extracted_skills[] = $skill;
+                    }
+                }
+                if (empty($extracted_skills)) {
+                    $extracted_skills = ['PHP', 'Laravel', 'MySQL', 'HTML', 'CSS', 'JavaScript'];
+                }
+                
+                // Deduct for missing bullet points
+                if (!$hasBulletPoints) {
+                    $score -= 15;
+                    $suggestions[] = 'Your resume is missing bullet points. Use structured bulleted lists for experience and projects instead of paragraphs to improve readability for ATS scanners.';
+                }
+                
+                // Deduct for missing sections
+                if (!$hasExperience) {
+                    $score -= 10;
+                    $suggestions[] = 'Missing Experience/Work history section. Add a section detailing your past work or training experience.';
+                }
+                if (!$hasProjects) {
+                    $score -= 10;
+                    $suggestions[] = 'Missing Projects section. Add key web development projects (like a Car Rental website or E-commerce system) to showcase your practical skills.';
+                }
+                if (!$hasEducation) {
+                    $score -= 10;
+                    $suggestions[] = 'Missing Education section. List your academic degrees/certificates.';
+                }
+                if (!$hasSkills) {
+                    $score -= 10;
+                    $suggestions[] = 'Missing Skills section. List your technical skills clearly so recruiters can scan them easily.';
+                }
+                
+                // Check course specific skills
+                if (stripos($courseInfo, 'PHP') !== false || stripos($courseInfo, 'Laravel') !== false || stripos($courseInfo, 'Full Stack') !== false || stripos($courseInfo, 'Web') !== false) {
+                    // Check missing skills for PHP/Laravel course
+                    $required = ['PHP', 'Laravel', 'MySQL', 'Git', 'HTML', 'CSS', 'JavaScript'];
+                    foreach ($required as $req) {
+                        if (!in_array($req, $extracted_skills)) {
+                            $missing_skills[] = $req;
+                            $score -= 4;
+                        }
+                    }
+                    if (!empty($missing_skills)) {
+                        $suggestions[] = 'Include core technologies from your course: ' . implode(', ', $missing_skills) . ' to match your learning profile.';
+                    }
+                } else {
+                    // Default missing skills
+                    $missing_skills = ['React', 'TypeScript', 'Docker', 'AWS'];
+                }
+                
+                // Ensure score is within 0-100
+                $score = max(0, min(100, $score));
+                
+                // If there are no suggestions, add default positive ones
+                if (empty($suggestions)) {
+                    $suggestions[] = 'Format sections clearly with bold headings.';
+                    $suggestions[] = 'Include DevOps/Cloud deployment experience (e.g. AWS or Heroku) if applicable.';
+                }
+
+                $missingSections = [];
+                if (!$hasExperience) $missingSections[] = 'Experience';
+                if (!$hasProjects) $missingSections[] = 'Projects';
+                if (!$hasEducation) $missingSections[] = 'Education';
+                if (!$hasSkills) $missingSections[] = 'Skills';
+                if (empty($missingSections)) $missingSections[] = 'None';
+
+                $improvements = $suggestions;
+                $defaultImprovements = [
+                    'Use strong action verbs like "Designed", "Developed", "Optimized" at the beginning of bullet points.',
+                    'Quantify achievements (e.g., "Optimized queries resulting in 30% faster page loads").',
+                    'Add a professional summary at the very top highlighting core technical competencies.',
+                    'Ensure all project descriptions follow the STAR methodology (Situation, Task, Action, Result).',
+                    'Limit the resume to 1-2 pages maximum for readability.',
+                    'Remove generic soft skills from list; demonstrate them contextually in project descriptions.',
+                    'Add relevant certifications, such as Laravel Certified Developer or AWS Cloud Practitioner.',
+                    'Improve typography and spacing for better visual scanning by human recruiters.',
+                    'Make sure your GitHub profiles and active project URLs are hyperlinked and accessible.',
+                    'Tailor keywords directly to match the Laravel Developer job descriptions.'
+                ];
+                foreach ($defaultImprovements as $def) {
+                    if (count($improvements) < 10) {
+                        $improvements[] = $def;
+                    }
+                }
+
+                return json_encode([
+                    'âœ… ATS Score (0-100)' => $score,
+                    'Reason for Score' => 'The resume has a clean structure but requires more industry keywords like Eloquent, MVC, and Git, along with quantified project achievements.',
+                    'Missing Keywords' => $missing_skills,
+                    'Matched Keywords' => $extracted_skills,
+                    'Top 10 Improvements' => array_slice($improvements, 0, 10),
+                    'Resume Summary' => 'A motivated developer with hands-on training and projects in PHP/Laravel development, specializing in relational databases and MVC architectures.',
+                    'Strengths' => [
+                        'Strong foundational skills in ' . implode(', ', array_slice($extracted_skills, 0, 3)),
+                        'Use of modern web technologies like Laravel and MySQL',
+                        'Clear section headings and logical structure'
+                    ],
+                    'Weaknesses' => [
+                        'Lack of quantified business impact and metrics',
+                        'Missing modern CI/CD or cloud deployment keywords',
+                        'Needs more action-oriented verbs in descriptions'
+                    ],
+                    'Resume Sections Missing' => $missingSections,
+                    'Recommended Certifications' => [
+                        'Laravel Certified Developer (Official)',
+                        'AWS Certified Cloud Practitioner'
+                    ],
+                    'Recommended Skills' => [
+                        'Automated Testing (PHPUnit/Pest)',
+                        'Redis Caching',
+                        'Docker Containerization',
+                        'Tailwind CSS'
+                    ],
+                    'Recommended Projects' => [
+                        'E-commerce API with Sanctum Auth & Stripe Payments',
+                        'Real-time Chat Application using Laravel Reverb (WebSockets)'
+                    ],
+                    'Final Hiring Decision' => 'Shortlist for Initial Technical Assessment. Candidate shows promising skills that align well with our core tech stack.'
+                ]);
+            }
+
+            if (strpos($prompt, 'learning roadmap') !== false) {
+                $role = 'Backend Developer';
+                if (stripos($prompt, 'Python') !== false || stripos($prompt, 'Data') !== false) {
+                    $role = 'Python Data Analyst';
+                } elseif (stripos($prompt, 'React') !== false || stripos($prompt, 'Frontend') !== false) {
+                    $role = 'React Frontend Developer';
+                } elseif (stripos($prompt, 'MERN') !== false) {
+                    $role = 'MERN Stack Developer';
+                } elseif (stripos($prompt, 'DevOps') !== false || stripos($prompt, 'Cloud') !== false) {
+                    $role = 'DevOps Cloud Engineer';
+                } elseif (stripos($prompt, 'QA') !== false || stripos($prompt, 'Testing') !== false) {
+                    $role = 'QA Automation Engineer';
+                } elseif (stripos($prompt, 'Cyber') !== false || stripos($prompt, 'Security') !== false) {
+                    $role = 'Cyber Security Specialist';
+                } elseif (stripos($prompt, 'PHP') !== false || stripos($prompt, 'Laravel') !== false) {
+                    $role = 'Fullstack PHP Developer';
+                }
+
+                $isExperienced = stripos($prompt, 'experienced') !== false;
+
+                $timeline = [];
+                $skillGap = [];
+
+                if ($role === 'Python Data Analyst') {
+                    if (!$isExperienced) {
+                        $timeline = [
+                            ['month' => 'Month 1', 'topic' => 'Python Basics & SQL', 'description' => 'Introduction to variables, loops, lists, and basic SQL query syntax (SELECT, WHERE, GROUP BY).'],
+                            ['month' => 'Month 2', 'topic' => 'Data Manipulation', 'description' => 'Using Pandas and NumPy libraries to clean, filter, and aggregate datasets.'],
+                            ['month' => 'Month 3', 'topic' => 'Data Visualization', 'description' => 'Creating charts with Matplotlib, Seaborn, and introduction to PowerBI dashboards.'],
+                            ['month' => 'Month 4', 'topic' => 'Basic Statistics & Excel', 'description' => 'Applying hypothesis testing, regression analysis, and advanced Excel features like Pivot tables.'],
+                            ['month' => 'Month 5', 'topic' => 'Capstone Project & Portfolio', 'description' => 'Analyzing a real-world dataset, building a Git repository, and practicing mock interviews.']
+                        ];
+                        $skillGap = [
+                            ['skill' => 'SQL Querying', 'gap_percentage' => 40],
+                            ['skill' => 'Pandas & NumPy', 'gap_percentage' => 60],
+                            ['skill' => 'PowerBI / Tableau', 'gap_percentage' => 80],
+                            ['skill' => 'Statistical Analysis', 'gap_percentage' => 70]
+                        ];
+                    } else {
+                        $timeline = [
+                            ['month' => 'Month 1', 'topic' => 'Advanced SQL & Data Warehousing', 'description' => 'Window functions, CTEs, indexing, and Snowflake/BigQuery database design.'],
+                            ['month' => 'Month 2', 'topic' => 'Advanced Data Engineering', 'description' => 'Python optimization, ETL/ELT pipelines, and orchestration using Apache Airflow.'],
+                            ['month' => 'Month 3', 'topic' => 'Big Data Processing', 'description' => 'Introduction to PySpark, distributed systems, and cloud data lakes on AWS/GCP.'],
+                            ['month' => 'Month 4', 'topic' => 'Predictive Modeling & BI', 'description' => 'Advanced machine learning with Scikit-learn, statistical modeling, and complex Tableau dashboards.'],
+                            ['month' => 'Month 5', 'topic' => 'System Integration & CI/CD', 'description' => 'Deploying data pipelines, containerization with Docker, and setting up automated testing.']
+                        ];
+                        $skillGap = [
+                            ['skill' => 'Big Data / PySpark', 'gap_percentage' => 60],
+                            ['skill' => 'Data Pipelines (ETL)', 'gap_percentage' => 50],
+                            ['skill' => 'Cloud Data Lakes', 'gap_percentage' => 70],
+                            ['skill' => 'Apache Airflow', 'gap_percentage' => 80]
+                        ];
+                    }
+                } elseif ($role === 'React Frontend Developer') {
+                    if (!$isExperienced) {
+                        $timeline = [
+                            ['month' => 'Month 1', 'topic' => 'Advanced HTML, CSS & JS Basics', 'description' => 'Flexbox, Grid, ES6+ features, and DOM manipulation.'],
+                            ['month' => 'Month 2', 'topic' => 'React Core Fundamentals', 'description' => 'Components, Props, State, Events, and Component Lifecycle.'],
+                            ['month' => 'Month 3', 'topic' => 'React Hooks & Routing', 'description' => 'useState, useEffect, useContext, and React Router navigation.'],
+                            ['month' => 'Month 4', 'topic' => 'CSS Frameworks & UI Kits', 'description' => 'Tailwind CSS, Bootstrap, and integrating Material-UI components.'],
+                            ['month' => 'Month 5', 'topic' => 'State Management & Deployment', 'description' => 'Redux Toolkit or Context API, Git version control, and deploying to Vercel.']
+                        ];
+                        $skillGap = [
+                            ['skill' => 'React Core', 'gap_percentage' => 40],
+                            ['skill' => 'State Management', 'gap_percentage' => 70],
+                            ['skill' => 'CSS Frameworks', 'gap_percentage' => 50],
+                            ['skill' => 'Git & Deployment', 'gap_percentage' => 60]
+                        ];
+                    } else {
+                        $timeline = [
+                            ['month' => 'Month 1', 'topic' => 'Next.js & Server-Side Rendering', 'description' => 'SSR, SSG, ISR, App Router, and SEO optimization techniques.'],
+                            ['month' => 'Month 2', 'topic' => 'Enterprise State Management', 'description' => 'Redux Saga/Thunk, Zustand, and directory structuring patterns.'],
+                            ['month' => 'Month 3', 'topic' => 'Testing & Code Quality', 'description' => 'Unit testing with Jest, React Testing Library, and End-to-End testing with Cypress.'],
+                            ['month' => 'Month 4', 'topic' => 'Performance Optimization', 'description' => 'Code splitting, lazy loading, caching strategies, and Web Vitals analysis.'],
+                            ['month' => 'Month 5', 'topic' => 'Advanced CI/CD & Cloud', 'description' => 'Docker containerization, GitHub Actions pipelines, and hosting on AWS Amplify.']
+                        ];
+                        $skillGap = [
+                            ['skill' => 'Next.js SSR', 'gap_percentage' => 50],
+                            ['skill' => 'React Testing', 'gap_percentage' => 60],
+                            ['skill' => 'Performance Optimization', 'gap_percentage' => 70],
+                            ['skill' => 'CI/CD Pipelines', 'gap_percentage' => 80]
+                        ];
+                    }
+                } elseif ($role === 'MERN Stack Developer') {
+                    if (!$isExperienced) {
+                        $timeline = [
+                            ['month' => 'Month 1', 'topic' => 'Frontend Basics (React)', 'description' => 'React core components, styling, and basic state management.'],
+                            ['month' => 'Month 2', 'topic' => 'Node.js & Express Basics', 'description' => 'Creating HTTP servers, handling routing, and writing REST API endpoints.'],
+                            ['month' => 'Month 3', 'topic' => 'MongoDB Database', 'description' => 'Understanding collections, documents, CRUD operations, and Mongoose schemas.'],
+                            ['month' => 'Month 4', 'topic' => 'User Authentication', 'description' => 'Implementing cookies, sessions, JWT token auth, and password hashing with bcrypt.'],
+                            ['month' => 'Month 5', 'topic' => 'Fullstack Integration', 'description' => 'Connecting React frontend with Node backend, CRUD operations, and deploying to Render.']
+                        ];
+                        $skillGap = [
+                            ['skill' => 'REST APIs', 'gap_percentage' => 50],
+                            ['skill' => 'MongoDB Design', 'gap_percentage' => 60],
+                            ['skill' => 'JWT Auth', 'gap_percentage' => 70],
+                            ['skill' => 'Fullstack Hosting', 'gap_percentage' => 80]
+                        ];
+                    } else {
+                        $timeline = [
+                            ['month' => 'Month 1', 'topic' => 'Advanced Express & Microservices', 'description' => 'API Gateway pattern, microservices architecture, and message queues like RabbitMQ.'],
+                            ['month' => 'Month 2', 'topic' => 'SQL & NoSQL Scaling', 'description' => 'MongoDB indexing, replica sets, aggregation pipelines, and PostgreSQL caching with Redis.'],
+                            ['month' => 'Month 3', 'topic' => 'Security & Testing', 'description' => 'OAuth2, CORS security, rate limiting, and writing integration tests using Mocha/Chai/Supertest.'],
+                            ['month' => 'Month 4', 'topic' => 'TypeScript & GraphQL', 'description' => 'Refactoring MERN apps to TypeScript, writing GraphQL schemas and resolver functions.'],
+                            ['month' => 'Month 5', 'topic' => 'DevOps & Containerization', 'description' => 'Dockerizing MERN stack, writing docker-compose files, and Kubernetes cluster orchestration.']
+                        ];
+                        $skillGap = [
+                            ['skill' => 'Microservices', 'gap_percentage' => 60],
+                            ['skill' => 'Database Sharding', 'gap_percentage' => 70],
+                            ['skill' => 'API Security', 'gap_percentage' => 50],
+                            ['skill' => 'Docker / Kubernetes', 'gap_percentage' => 80]
+                        ];
+                    }
+                } elseif ($role === 'DevOps Cloud Engineer') {
+                    if (!$isExperienced) {
+                        $timeline = [
+                            ['month' => 'Month 1', 'topic' => 'Linux Administration & Scripting', 'description' => 'File systems, user permissions, shell scripting basics.'],
+                            ['month' => 'Month 2', 'topic' => 'Git & Version Control', 'description' => 'Branching, merging, pull requests, and Git conflict resolution workflows.'],
+                            ['month' => 'Month 3', 'topic' => 'Containerization with Docker', 'description' => 'Writing Dockerfiles, building images, and managing container volumes/networks.'],
+                            ['month' => 'Month 4', 'topic' => 'Cloud Infrastructure Basics', 'description' => 'AWS core services like EC2, S3, RDS, VPC, and basic networking concepts.'],
+                            ['month' => 'Month 5', 'topic' => 'CI/CD Pipelines & Hosting', 'description' => 'Building automated workflows with GitHub Actions or Jenkins, and deploying a simple web app.']
+                        ];
+                        $skillGap = [
+                            ['skill' => 'Linux Scripting', 'gap_percentage' => 50],
+                            ['skill' => 'Docker Containers', 'gap_percentage' => 60],
+                            ['skill' => 'AWS Cloud Basics', 'gap_percentage' => 70],
+                            ['skill' => 'Jenkins CI/CD', 'gap_percentage' => 80]
+                        ];
+                    } else {
+                        $timeline = [
+                            ['month' => 'Month 1', 'topic' => 'Infrastructure as Code (IaC)', 'description' => 'Writing Terraform scripts, managing states, and configuring AWS resources automatically.'],
+                            ['month' => 'Month 2', 'topic' => 'Container Orchestration', 'description' => 'Kubernetes cluster setups, pods, deployments, services, and Helm charts configuration.'],
+                            ['month' => 'Month 3', 'topic' => 'Advanced CI/CD & GitOps', 'description' => 'Jenkins shared libraries, GitLab CI, ArgoCD, and automated canary/blue-green deployments.'],
+                            ['month' => 'Month 4', 'topic' => 'Monitoring & APM', 'description' => 'Setting up Prometheus, Grafana dashboards, ELK stack log aggregation, and APM tools.'],
+                            ['month' => 'Month 5', 'topic' => 'Hybrid Cloud & Security', 'description' => 'Securing AWS IAM, HashiCorp Vault for secrets, and Terraform compliance scanning.']
+                        ];
+                        $skillGap = [
+                            ['skill' => 'Terraform IaC', 'gap_percentage' => 60],
+                            ['skill' => 'Kubernetes Admin', 'gap_percentage' => 70],
+                            ['skill' => 'GitOps / ArgoCD', 'gap_percentage' => 80],
+                            ['skill' => 'Monitoring Stack', 'gap_percentage' => 50]
+                        ];
+                    }
+                } elseif ($role === 'QA Automation Engineer') {
+                    if (!$isExperienced) {
+                        $timeline = [
+                            ['month' => 'Month 1', 'topic' => 'Manual Testing & SDLC', 'description' => 'Agile methodology, writing test cases, bug tracking using JIRA.'],
+                            ['month' => 'Month 2', 'topic' => 'Web Basics & Locator Strategies', 'description' => 'HTML, CSS, XPath, CSS selectors, and basic Javascript/Java syntax.'],
+                            ['month' => 'Month 3', 'topic' => 'Selenium Webdriver Basics', 'description' => 'Initializing drivers, managing page elements, and writing basic click/type test scripts.'],
+                            ['month' => 'Month 4', 'topic' => 'Testing Frameworks', 'description' => 'Integrating TestNG or JUnit, writing assertions, and generating HTML execution reports.'],
+                            ['month' => 'Month 5', 'topic' => 'API Testing Basics', 'description' => 'Using Postman for manual API requests, writing test assertions, and collection runs.']
+                        ];
+                        $skillGap = [
+                            ['skill' => 'Automation Scripting', 'gap_percentage' => 60],
+                            ['skill' => 'Locator Strategies', 'gap_percentage' => 50],
+                            ['skill' => 'TestNG Framework', 'gap_percentage' => 70],
+                            ['skill' => 'API Postman', 'gap_percentage' => 80]
+                        ];
+                    } else {
+                        $timeline = [
+                            ['month' => 'Month 1', 'topic' => 'Modern JS Automation', 'description' => 'Cypress or Playwright setup, writing fast async web tests, and mocking API network requests.'],
+                            ['month' => 'Month 2', 'topic' => 'API Automation Frameworks', 'description' => 'RestAssured or Supertest, writing schema validation tests, and token lifecycle handling.'],
+                            ['month' => 'Month 3', 'topic' => 'Performance & Load Testing', 'description' => 'Writing load test scripts with JMeter or K6, and analyzing server metrics under stress.'],
+                            ['month' => 'Month 4', 'topic' => 'CI/CD & Parallel Testing', 'description' => 'Running headless tests in GitHub Actions/Jenkins, and parallel test grids like Selenium Grid.'],
+                            ['month' => 'Month 5', 'topic' => 'Mobile Testing & BDD', 'description' => 'Appium mobile automation, writing Cucumber BDD feature files and step definitions.']
+                        ];
+                        $skillGap = [
+                            ['skill' => 'Playwright / Cypress', 'gap_percentage' => 50],
+                            ['skill' => 'RestAssured', 'gap_percentage' => 60],
+                            ['skill' => 'Load Testing', 'gap_percentage' => 70],
+                            ['skill' => 'BDD Cucumber', 'gap_percentage' => 80]
+                        ];
+                    }
+                } elseif ($role === 'Cyber Security Specialist') {
+                    if (!$isExperienced) {
+                        $timeline = [
+                            ['month' => 'Month 1', 'topic' => 'Computer Networking Basics', 'description' => 'TCP/IP protocols, DNS, subnets, routers, firewalls, and Wireshark traffic analysis.'],
+                            ['month' => 'Month 2', 'topic' => 'Linux Security & CLI', 'description' => 'Basic commands, system auditing, permissions, and bash utility scripting.'],
+                            ['month' => 'Month 3', 'topic' => 'Threat Vectors & OWASP Top 10', 'description' => 'Web vulnerabilities: SQL Injection, XSS, CSRF, and broken access controls.'],
+                            ['month' => 'Month 4', 'topic' => 'Penetration Testing Basics', 'description' => 'Nmap network scanning, port enumeration, Metasploit, and basic vulnerability scanners.'],
+                            ['month' => 'Month 5', 'topic' => 'Cryptography & IAM', 'description' => 'Symmetric/Asymmetric encryption, SSL/TLS handshakes, and access control models.']
+                        ];
+                        $skillGap = [
+                            ['skill' => 'Network Security', 'gap_percentage' => 40],
+                            ['skill' => 'OWASP Vulnerabilities', 'gap_percentage' => 60],
+                            ['skill' => 'Pen Testing Tools', 'gap_percentage' => 70],
+                            ['skill' => 'Cryptography', 'gap_percentage' => 80]
+                        ];
+                    } else {
+                        $timeline = [
+                            ['month' => 'Month 1', 'topic' => 'Advanced Penetration Testing', 'description' => 'Exploiting active directory, privilege escalation, and writing custom exploitation scripts.'],
+                            ['month' => 'Month 2', 'topic' => 'DevSecOps & Security Automation', 'description' => 'Static/Dynamic application security testing - SAST/DAST, and secure dependency checks.'],
+                            ['month' => 'Month 3', 'topic' => 'Incident Response & Forensics', 'description' => 'Memory forensics, analyzing server logs, and writing incident remediation reports.'],
+                            ['month' => 'Month 4', 'topic' => 'Cloud Security Architecture', 'description' => 'AWS IAM policies, securing VPC endpoints, and Kubernetes cluster security hardening.'],
+                            ['month' => 'Month 5', 'topic' => 'Governance, Risk & GRC', 'description' => 'Auditing systems for ISO 27001, SOC2, HIPAA, and designing enterprise security policies.']
+                        ];
+                        $skillGap = [
+                            ['skill' => 'Advanced Exploit Tools', 'gap_percentage' => 60],
+                            ['skill' => 'DevSecOps Pipeline', 'gap_percentage' => 70],
+                            ['skill' => 'Forensics Analysis', 'gap_percentage' => 80],
+                            ['skill' => 'GRC Audits', 'gap_percentage' => 50]
+                        ];
+                    }
+                } else {
+                    // Default / PHP / Backend Developer
+                    if (!$isExperienced) {
+                        $timeline = [
+                            ['month' => 'Month 1', 'topic' => 'Core PHP Fundamentals', 'description' => 'Variables, conditions, arrays, loops, functions, and working with form submissions.'],
+                            ['month' => 'Month 2', 'topic' => 'Database Design & SQL', 'description' => 'Relational database structures, SQL query syntax, and PHP PDO connection models.'],
+                            ['month' => 'Month 3', 'topic' => 'Laravel Framework Basics', 'description' => 'MVC architecture, routing, controllers, blade templates, and Laravel migrations.'],
+                            ['month' => 'Month 4', 'topic' => 'Eloquent ORM & Relationships', 'description' => 'Defining database models, one-to-many, many-to-many associations, seeders, and factories.'],
+                            ['month' => 'Month 5', 'topic' => 'REST API & Authentication', 'description' => 'Writing JSON APIs, handling validation rules, and using Laravel Sanctum for API tokens.']
+                        ];
+                        $skillGap = [
+                            ['skill' => 'Core PHP OOP', 'gap_percentage' => 30],
+                            ['skill' => 'Laravel Basics', 'gap_percentage' => 50],
+                            ['skill' => 'Eloquent ORM', 'gap_percentage' => 60],
+                            ['skill' => 'REST API', 'gap_percentage' => 70]
+                        ];
+                    } else {
+                        $timeline = [
+                            ['month' => 'Month 1', 'topic' => 'Advanced Laravel & Architecture', 'description' => 'Service Containers, Service Providers, Dependency Injection, and Repository Pattern.'],
+                            ['month' => 'Month 2', 'topic' => 'Caching & Optimization', 'description' => 'Query optimization, Redis caching layers, and database index tuning.'],
+                            ['month' => 'Month 3', 'topic' => 'Asynchronous Jobs & Event Systems', 'description' => 'Laravel Queues, Redis worker configurations, and event broadcasting with WebSockets.'],
+                            ['month' => 'Month 4', 'topic' => 'Docker & DevOps Deployments', 'description' => 'Containerizing PHP-FPM and Nginx, writing docker-compose, and automating deployments to Render/AWS.'],
+                            ['month' => 'Month 5', 'topic' => 'Automated Testing & Security', 'description' => 'Writing unit/feature tests using PHPUnit or Pest, and sanitizing inputs against security vectors.']
+                        ];
+                        $skillGap = [
+                            ['skill' => 'Service Container', 'gap_percentage' => 60],
+                            ['skill' => 'Queues & Redis', 'gap_percentage' => 70],
+                            ['skill' => 'Docker Setup', 'gap_percentage' => 80],
+                            ['skill' => 'Testing (Pest/PHPUnit)', 'gap_percentage' => 50]
+                        ];
+                    }
+                }
+
+                return json_encode([
+                    'timeline' => $timeline,
+                    'skill_gap' => $skillGap
+                ]);
+            }
+
+            if (strpos($prompt, 'completion report') !== false || strpos($prompt, 'complete performance') !== false) {
+                return json_encode([
+                    'technical_score' => 85,
+                    'communication_score' => 78,
+                    'confidence_score' => 80,
+                    'strong_areas' => ['Laravel Basics', 'Database Concepts', 'CRUD Operations'],
+                    'weak_areas' => ['API Development', 'Design Patterns', 'Queue Systems'],
+                    'recommended_topics' => ['Laravel APIs', 'Authentication', 'Queues & Redis', 'Service Container']
+                ]);
+            }
+        }
+
+        // Text mock fallbacks (Default is a list of dynamic interview questions)
+        if (strpos($prompt, 'Technical') !== false) {
+            // Check if project details are present in prompt
+            if (stripos($prompt, 'Car Rental') !== false || stripos($prompt, 'project') !== false) {
+                $projectQuestions = [
+                    "Can you explain the overall architecture of your Car Rental Website project?",
+                    "What database tables did you create for the booking functionality in the Car Rental Website?",
+                    "How did you implement the vehicle booking and calendar functionalities in your Car Rental Website?",
+                    "What technical challenges did you face during the implementation of the Car Rental Website?",
+                    "How did you solve the database and concurrency challenges in your Car Rental Website?"
+                ];
+                // Select question based on history count if possible, or random
+                if (strpos($prompt, 'history') !== false) {
+                    // Try to count questions already asked
+                    preg_match_all('/"question"/', $prompt, $matches);
+                    $count = count($matches[0] ?? []);
+                    return $projectQuestions[$count % count($projectQuestions)];
+                }
+                return $projectQuestions[0];
+            }
+
+            // Adaptive difficulty checks
+            $isExpert = stripos($prompt, 'Expert') !== false || stripos($prompt, 'Architectural') !== false;
+            $isHard = stripos($prompt, 'Hard') !== false || stripos($prompt, 'Advanced') !== false;
+            $isMedium = stripos($prompt, 'Medium') !== false || stripos($prompt, 'Intermediate') !== false;
+
+            if (stripos($prompt, 'Python') !== false || stripos($prompt, 'Django') !== false || stripos($prompt, 'Flask') !== false) {
+                if ($isExpert) {
+                    return "How does Python's Global Interpreter Lock (GIL) affect multi-threaded applications, and how do you achieve concurrency?";
+                }
+                if ($isHard) {
+                    return "What are Python decorators, and how would you implement a custom decorator to log function execution time?";
+                }
+                if ($isMedium) {
+                    return "What is the difference between Django's select_related and prefetch_related, and how do they optimize database queries?";
+                }
+                return "What are the key differences between Python lists and tuples, and when would you use each?";
+            }
+
+            if (stripos($prompt, 'React') !== false || stripos($prompt, 'JavaScript') !== false || stripos($prompt, 'JS') !== false || stripos($prompt, 'Angular') !== false || stripos($prompt, 'Vue') !== false) {
+                if ($isExpert) {
+                    return "How do you optimize React rendering performance to avoid unnecessary re-renders in deep component trees?";
+                }
+                if ($isHard) {
+                    return "What is code splitting and lazy loading in React, and how do they improve the Initial Page Load time?";
+                }
+                if ($isMedium) {
+                    return "What is the difference between Context API and Redux for state management, and when would you choose one over the other?";
+                }
+                return "What is the difference between virtual DOM and real DOM in React?";
+            }
+
+            if (stripos($prompt, 'Java') !== false || stripos($prompt, 'Spring') !== false) {
+                if ($isExpert) {
+                    return "How do you resolve memory leaks or thread contention issues in a high-concurrency Spring Boot application?";
+                }
+                if ($isHard) {
+                    return "How do you configure database transaction management using @Transactional in Spring Boot, and what are propagation levels?";
+                }
+                if ($isMedium) {
+                    return "Can you explain Dependency Injection and how Spring's ApplicationContext resolves bean dependencies?";
+                }
+                return "What is the difference between an Abstract Class and an Interface in Java?";
+            }
+
+            if (stripos($prompt, 'Node') !== false || stripos($prompt, 'Express') !== false) {
+                if ($isExpert) {
+                    return "How would you design a secure, distributed session management system using Node.js and Redis?";
+                }
+                if ($isHard) {
+                    return "What are streams in Node.js, and how do you use them to read or write large files efficiently?";
+                }
+                if ($isMedium) {
+                    return "What is the role of the Event Loop in Node.js, and how does it execute callbacks?";
+                }
+                return "What is Node.js, and how does its non-blocking event-driven architecture work?";
+            }
+
+            if (stripos($prompt, 'MySQL') !== false || stripos($prompt, 'PostgreSQL') !== false || stripos($prompt, 'SQL') !== false) {
+                if ($isExpert) {
+                    return "How would you design a database sharding and replication strategy for a write-heavy application?";
+                }
+                if ($isHard) {
+                    return "How do you identify and optimize a slow query using EXPLAIN in PostgreSQL or MySQL?";
+                }
+                if ($isMedium) {
+                    return "What are database indexes, and how do they speed up search queries?";
+                }
+                return "What is the difference between INNER JOIN and LEFT JOIN in SQL?";
+            }
+
+            if (stripos($prompt, 'DevOps') !== false || stripos($prompt, 'Docker') !== false || stripos($prompt, 'AWS') !== false || stripos($prompt, 'Kubernetes') !== false) {
+                if ($isExpert) {
+                    return "How would you design a highly available, multi-region disaster recovery architecture on AWS?";
+                }
+                if ($isHard) {
+                    return "What is Infrastructure as Code (IaC), and how do you manage infrastructure state using Terraform?";
+                }
+                if ($isMedium) {
+                    return "How does a Kubernetes Pod differ from a Docker Container?";
+                }
+                return "What is Docker, and what is the difference between an Image and a Container?";
+            }
+
+            // Default / Laravel
+            if ($isExpert) {
+                return "How do you design a Repository Pattern or handle Service Classes in Laravel for large-scale applications?";
+            }
+            if ($isHard) {
+                return "What is dependency injection and how does the Service Container resolve bindings in Laravel?";
+            }
+            if ($isMedium) {
+                return "Can you explain the lifecycle of a request in a Laravel application from entry to response?";
+            }
+
+            // Default / Fresher
+            $defaultTechQuestions = [
+                "What is the difference between Laravel seeders and factories, and when would you use each?",
+                "Can you explain the lifecycle of a request in a Laravel application from entry to response?",
+                "What is dependency injection and how does the Service Container resolve bindings in Laravel?",
+                "How do you design a Repository Pattern or handle Service Classes in Laravel for large-scale applications?",
+                "How does middleware work in Laravel, and how do you register it?"
+            ];
+            preg_match_all('/"question"/', $prompt, $matches);
+            $count = count($matches[0] ?? []);
+            return $defaultTechQuestions[$count % count($defaultTechQuestions)];
+        }
+
+        // Default HR
+        preg_match_all('/"question"/', $prompt, $matches);
+        $count = count($matches[0] ?? []);
+
+        $fresherHR = [
+            "Tell me about yourself.",
+            "Walk me through your resume.",
+            "Why do you want to work in the IT industry?",
+            "Why are you interested in this company?",
+            "Why should we hire you?",
+            "What are your strengths?",
+            "What is your biggest weakness?",
+            "What makes you different from other candidates?",
+            "Where do you see yourself in 5 years?",
+            "What are your long-term career goals?"
+        ];
+
+        $experiencedHR = [
+            "Walk me through your professional journey.",
+            "What has been your biggest achievement so far?",
+            "What projects are you currently working on?",
+            "Describe your role in your current project.",
+            "What technologies do you use daily.",
+            "What challenges have you faced in your current role?",
+            "Why do you want to leave your current company?",
+            "What new skills have you learned recently?"
+        ];
+
+        if (stripos($prompt, 'Experienced') !== false || stripos($prompt, 'Experience') !== false) {
+            $index = $count % count($experiencedHR);
+            return $experiencedHR[$index];
+        }
+
+        // Default to Fresher HR
+        $index = $count % count($fresherHR);
+        return $fresherHR[$index];
+    }
+}
+

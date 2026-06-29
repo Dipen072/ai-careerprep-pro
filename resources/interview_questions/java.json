@@ -1,0 +1,117 @@
+{
+    "fresher": [
+        {
+            "id": "what_is_java",
+            "question": {
+                "en": "What is Java and why is it considered platform-independent?",
+                "hi": "Java क्या है और इसे platform-independent क्यों माना जाता है?",
+                "gu": "Java શું છે અને તેને platform-independent કેમ માનવામાં આવે છે?",
+                "hi_en": "Java kya hai aur ise platform-independent kyu mana jata hai?",
+                "gu_en": "Java shu chhe ane ene platform-independent kem manvama ave chhe?"
+            },
+            "hint": {
+                "en": "Hint: Explain that Java compiles code to bytecode, which can run on any platform using the Java Virtual Machine (JVM).",
+                "hi": "संकेत: समझाएं कि Java कोड को बाइटकोड में कंपाइल करता है, जिसे Java Virtual Machine (JVM) का उपयोग करके किसी भी प्लेटफॉर्म पर चलाया जा सकता है।",
+                "gu": "સંકેત: સમજાવો કે Java કોડ બાઈટકોડમાં કમ્પાઈલ થાય છે, જે JVM દ્વારા કોઈપણ પ્લેટફોર્મ પર રન થાય છે.",
+                "hi_en": "Hint: Explain karo ki Java code bytecode me compile hota hai, jo JVM ke through kisi bhi OS pe run ho sakta hai.",
+                "gu_en": "Hint: JVM no reference aapo ke e bytecode ne run kare chhe."
+            },
+            "evaluation": {
+                "score": 88,
+                "communication_score": 90,
+                "confidence_score": 87,
+                "positive_points": [
+                    "Correctly identified Java as class-based OOP language",
+                    "Mentioned the role of JVM and Bytecode"
+                ],
+                "missing_points": [
+                    "Could clarify that while the code is platform-independent, the JVM itself is platform-dependent"
+                ],
+                "suggestions": [
+                    "Highlight the Write Once, Run Anywhere (WORA) principle.",
+                    "Explain that source code compiles to .class files (bytecode)."
+                ],
+                "improved_answer": "Java is a class-based, object-oriented programming language. It is platform-independent because source code compiles into intermediate bytecode (.class files) rather than machine code. This bytecode runs on any platform equipped with a Java Virtual Machine (JVM), achieving the Write Once, Run Anywhere (WORA) principle.",
+                "grammar_feedback": "Good technical explanation.",
+                "voice_analysis": "Speaking speed: 125 WPM.",
+                "camera_analysis": "Eye contact: 88%."
+            }
+        },
+        {
+            "id": "jdk_jre_jvm",
+            "question": {
+                "en": "What is the difference between JDK, JRE, and JVM?",
+                "hi": "JDK, JRE, और JVM के बीच क्या अंतर है?",
+                "gu": "JDK, JRE, અને JVM વચ્ચે શું તફાવત છે?",
+                "hi_en": "JDK, JRE, aur JVM me kya difference hai?",
+                "gu_en": "JDK, JRE, ane JVM ma shu difference chhe?"
+            },
+            "hint": {
+                "en": "Hint: JDK is for development, JRE is the runtime environment, and JVM actually runs the bytecode.",
+                "hi": "संकेत: JDK विकास के लिए है, JRE रनटाइम वातावरण है, और JVM वास्तव में बाइटकोड चलाता है।",
+                "gu": "સંકેત: JDK ડેવલપમેન્ટ માટે છે, JRE રનટાઇમ છે, અને JVM બાઇટકોડ રન કરે છે.",
+                "hi_en": "Hint: JDK dev tools ke liye hai, JRE runtime libraries deta hai, aur JVM bytecode execute karta hai.",
+                "gu_en": "Hint: JDK development mate, JRE run karva mate, ane JVM execute karva mate chhe."
+            },
+            "evaluation": {
+                "score": 89,
+                "communication_score": 88,
+                "confidence_score": 86,
+                "positive_points": [
+                    "Correctly defined the hierarchy (JDK contains JRE, JRE contains JVM)",
+                    "Clarified execution role of JVM"
+                ],
+                "missing_points": [
+                    "Could list components of JRE like standard class libraries"
+                ],
+                "suggestions": [
+                    "Explain JDK as a superset of JRE.",
+                    "Identify JVM as the core virtual engine."
+                ],
+                "improved_answer": "JDK (Java Development Kit) is a software package containing development tools (like javac) and the JRE. JRE (Java Runtime Environment) provides class libraries and resources necessary to execute Java programs. JVM (Java Virtual Machine) is the abstract execution engine that interprets or JIT-compiles bytecode into native machine code.",
+                "grammar_feedback": "Clear definitions.",
+                "voice_analysis": "Speaking speed: 120 WPM.",
+                "camera_analysis": "Eye contact: 85%."
+            }
+        }
+    ],
+    "experienced": [
+        {
+            "id": "garbage_collection_java",
+            "question": {
+                "en": "How does Garbage Collection work in Java and what are the different GC algorithms?",
+                "hi": "Java में Garbage Collection कैसे काम करता है और विभिन्न GC algorithms क्या हैं?",
+                "gu": "Java માં Garbage Collection કેવી રીતે કામ કરે છે અને વિવિધ GC algorithms કયા છે?",
+                "hi_en": "Java me Garbage Collection kaise kaam karta hai aur different GC algorithms kya hain?",
+                "gu_en": "Java ma Garbage Collection kevi rite kaam kare chhe ane different GC algorithms kaya chhe?"
+            },
+            "hint": {
+                "en": "Hint: Explain that GC automatically reclaims memory by deleting unreachable objects, using algorithms like G1, Serial, or CMS.",
+                "hi": "संकेत: समझाएं कि GC अनुपयोगी ऑब्जेक्ट्स को हटाकर मेमोरी को ऑटोमैटिकली खाली करता है।",
+                "gu": "સંકેત: GC બિનજરૂરી ઓબ્જેક્ટ્સને મેમરીમાંથી આપમેળે દૂર કરે છે.",
+                "hi_en": "Hint: GC automatically unreachable objects ko clean karta hai. Algorithms jaise G1GC ya CMS mention karo.",
+                "gu_en": "Hint: GC automatic memory clear kare chhe. G1, Serial algorithms na naam aapo."
+            },
+            "evaluation": {
+                "score": 90,
+                "communication_score": 92,
+                "confidence_score": 89,
+                "positive_points": [
+                    "Explained automatic heap memory cleanup",
+                    "Mentioned unreachable objects detection"
+                ],
+                "missing_points": [
+                    "Could name concrete GC collectors like G1GC, ZGC, or Serial GC"
+                ],
+                "suggestions": [
+                    "Describe the difference between young, old, and permanent generations in Heap memory.",
+                    "Briefly mention the mark-and-sweep phase."
+                ],
+                "improved_answer": "Garbage Collection in Java runs in the JVM heap, automatically reclaiming memory occupied by objects that are no longer reachable in the application code. It uses a mark-and-sweep strategy across generations (Young and Old). Common algorithms include Serial GC, Parallel GC, G1 (Garbage First) GC, and ZGC.",
+                "grammar_feedback": "Excellent technical vocabulary.",
+                "voice_analysis": "Speaking speed: 126 WPM.",
+                "camera_analysis": "Eye contact: 90%."
+            }
+        }
+    ]
+}

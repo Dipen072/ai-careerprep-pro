@@ -1,0 +1,80 @@
+{
+    "fresher": [
+        {
+            "id": "node_event_driven",
+            "question": {
+                "en": "What is Node.js and how does its event-driven architecture work?",
+                "hi": "Node.js क्या है और इसका event-driven architecture कैसे काम करता है?",
+                "gu": "Node.js શું છે અને તેનું event-driven architecture કેવી રીતે કામ કરે છે?",
+                "hi_en": "Node.js kya hai aur iska event-driven architecture kaise kaam karta hai?",
+                "gu_en": "Node.js shu chhe ane enu event-driven architecture kevi rite kaam kare chhe?"
+            },
+            "hint": {
+                "en": "Hint: Mention that Node.js is a runtime environment that uses an event loop and event emitters to trigger callbacks asynchronously.",
+                "hi": "संकेत: बताएं कि Node.js एक रनटाइम वातावरण है जो एसिंक्रोनस रूप से कॉलबैक को ट्रिगर करने के लिए एक इवेंट लूप का उपयोग करता है।",
+                "gu": "સંકેત: સમજાવો કે Node.js એ રનટાઇમ છે જે ઇવેન્ટ લૂપ અને કોલબેક્સનો ઉપયોગ કરે છે.",
+                "hi_en": "Hint: Batao ki Node.js JS runtime hai jo event loop aur callbacks ke through async execution karta hai.",
+                "gu_en": "Hint: Kaho ke Node.js JavaScript runtime chhe je event loop ane callback thi asynchronous work kare chhe."
+            },
+            "evaluation": {
+                "score": 87,
+                "communication_score": 88,
+                "confidence_score": 86,
+                "positive_points": [
+                    "Identified Node.js as a Chrome V8 runtime",
+                    "Explained asynchronous\/non-blocking execution model"
+                ],
+                "missing_points": [
+                    "Could detail how event emitters work"
+                ],
+                "suggestions": [
+                    "Highlight that Node.js is a runtime, not a framework.",
+                    "Explain the single-threaded nature of Node.js."
+                ],
+                "improved_answer": "Node.js is an open-source, cross-platform JavaScript runtime environment built on Chrome's V8 engine. Its event-driven architecture operates by registering listener functions (callbacks) for specific events. When an event occurs (like an I\/O operation completing), it is pushed to an event queue and processed asynchronously by the event loop.",
+                "grammar_feedback": "Clear and accurate description.",
+                "voice_analysis": "Speaking speed: 122 WPM.",
+                "camera_analysis": "Eye contact: 86%."
+            }
+        }
+    ],
+    "experienced": [
+        {
+            "id": "node_event_loop",
+            "question": {
+                "en": "Explain the Node.js Event Loop phases.",
+                "hi": "Node.js Event Loop के phases को समझाइए।",
+                "gu": "Node.js Event Loop ના તબક્કાઓ (phases) સમજાવો.",
+                "hi_en": "Node.js Event Loop ke phases ko explain karein.",
+                "gu_en": "Node.js Event Loop na phases ne explain karo."
+            },
+            "hint": {
+                "en": "Hint: The event loop phases include Timers, Pending Callbacks, Idle\/Prepare, Poll, Check, and Close Callbacks.",
+                "hi": "संकेत: इवेंट लूप चरणों में Timers, Poll, Check, और Close Callbacks शामिल हैं।",
+                "gu": "સંકેત: ઇવેન્ટ લૂપના તબક્કામાં Timers, Poll, Check અને Close Callbacks સામેલ છે.",
+                "hi_en": "Hint: Event loop ke key phases Timers, Poll, Check, Close Callbacks aur process.nextTick stack ke baare me batao.",
+                "gu_en": "Hint: Timers, Poll, Check phase na naam aapo."
+            },
+            "evaluation": {
+                "score": 91,
+                "communication_score": 93,
+                "confidence_score": 90,
+                "positive_points": [
+                    "Detailed single-threaded execution phases",
+                    "Explained Poll phase and Timer phase differences"
+                ],
+                "missing_points": [
+                    "Could clarify where setImmediate and process.nextTick fit in"
+                ],
+                "suggestions": [
+                    "Break down the execution loop phase-by-phase (Timers -> Pending -> Poll -> Check -> Close).",
+                    "Explain the difference between microtasks and macrotasks."
+                ],
+                "improved_answer": "The Node.js event loop executes tasks in specific phases: 1) Timers (setTimeout\/setInterval callbacks), 2) Pending Callbacks (deferred I\/O), 3) Idle\/Prepare, 4) Poll (retrieves new I\/O events), 5) Check (setImmediate callbacks), and 6) Close Callbacks (socket.on('close')). process.nextTick runs immediately after the current phase.",
+                "grammar_feedback": "Excellent technical accuracy.",
+                "voice_analysis": "Speaking speed: 126 WPM.",
+                "camera_analysis": "Eye contact: 92%."
+            }
+        }
+    ]
+}

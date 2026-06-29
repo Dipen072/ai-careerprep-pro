@@ -1,0 +1,7 @@
+Dipen Patel
+Fullstack PHP / Laravel Developer
+Skills: PHP, Laravel, MySQL, HTML, CSS, JavaScript, Git.
+Education: Bachelor of Commerce (B.Com).
+Projects:
+- Car Rental Website: A Laravel booking application featuring dynamic pricing and payment integration.
+- AI Interview Coach: A system that analyzes user inputs using generative AI.

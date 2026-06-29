@@ -1,0 +1,119 @@
+{
+    "fresher": [
+        {
+            "id": "what_is_php",
+            "question": {
+                "en": "What is PHP?",
+                "hi": "PHP क्या है?",
+                "gu": "PHP શું છે?",
+                "hi_en": "PHP kya hai?",
+                "gu_en": "PHP shu chhe?"
+            },
+            "hint": {
+                "en": "Hint: Mention that PHP stands for Hypertext Preprocessor and is a server-side scripting language designed for web development.",
+                "hi": "संकेत: बताएं कि PHP एक सर्वर-साइड स्क्रिप्टिंग भाषा है जो वेब विकास के लिए उपयोग की जाती है।",
+                "gu": "સંકેત: સમજાવો કે PHP એ સર્વર-સાઇડ સ્ક્રિપ્ટીંગ લેંગ્વેજ છે જે વેબ ડેવલપમેન્ટ માટે વપરાય છે।",
+                "hi_en": "Hint: Batao ki PHP ek server-side scripting language hai jo web development ke liye use hoti hai.",
+                "gu_en": "Hint: Kaho ke PHP ek server-side scripting language chhe je web development mate use thay chhe."
+            },
+            "evaluation": {
+                "score": 85,
+                "communication_score": 88,
+                "confidence_score": 85,
+                "positive_points": [
+                    "Correctly defined PHP as server-side scripting language",
+                    "Mentioned it is widely used for web development"
+                ],
+                "missing_points": [
+                    "Could mention that it stands for Hypertext Preprocessor",
+                    "Could mention database integration capabilities"
+                ],
+                "suggestions": [
+                    "Provide the full form of PHP.",
+                    "Explain where PHP runs (on the server)."
+                ],
+                "improved_answer": "PHP (Hypertext Preprocessor) is a widely-used, open-source server-side scripting language designed specifically for web development. It is executed on the server, generating HTML which is then sent to the client.",
+                "grammar_feedback": "Good technical description.",
+                "voice_analysis": "Speaking speed: 120 WPM. Filler words: None.",
+                "camera_analysis": "Eye contact: 88%. Smiling: Yes."
+            }
+        },
+        {
+            "id": "what_is_laravel",
+            "question": {
+                "en": "What is Laravel?",
+                "hi": "Laravel क्या है?",
+                "gu": "Laravel શું છે?",
+                "hi_en": "Laravel kya hai?",
+                "gu_en": "Laravel shu chhe?"
+            },
+            "hint": {
+                "en": "Hint: Explain that Laravel is a PHP framework based on MVC architecture, offering tools like Eloquent ORM.",
+                "hi": "संकेत: समझाएं कि Laravel एक PHP फ्रेमवर्क है जो MVC आर्किटेक्चर पर आधारित है और Eloquent ORM जैसे टूल्स प्रदान करता है।",
+                "gu": "સંકેત: સમજાવો કે Laravel એ એક PHP ફ્રેમવર્ક છે જે MVC આર્કિટેક્ચર પર આધારિત છે।",
+                "hi_en": "Hint: Explain karo ki Laravel ek MVC pattern pe based PHP framework hai jo tools provide karta hai.",
+                "gu_en": "Hint: Explain karo ke Laravel ek MVC framework chhe PHP nu."
+            },
+            "evaluation": {
+                "score": 87,
+                "communication_score": 89,
+                "confidence_score": 86,
+                "positive_points": [
+                    "Identified Laravel as a popular PHP framework",
+                    "Mentioned the MVC architecture design pattern"
+                ],
+                "missing_points": [
+                    "Could mention key features like Eloquent ORM, Routing, and Blade templating engine"
+                ],
+                "suggestions": [
+                    "Highlight the benefits of using a framework over core PHP.",
+                    "Name a few built-in tools like Eloquent or Artisan."
+                ],
+                "improved_answer": "Laravel is a free, open-source PHP web framework created by Taylor Otwell. It follows the Model-View-Controller (MVC) architectural pattern and provides built-in tools for routing, authentication, sessions, caching, and database manipulation via Eloquent ORM.",
+                "grammar_feedback": "Clear and precise.",
+                "voice_analysis": "Speaking speed: 122 WPM. Voice clarity: 94%.",
+                "camera_analysis": "Eye contact: 90%. Posture: Steady."
+            }
+        }
+    ],
+    "experienced": [
+        {
+            "id": "laravel_service_container",
+            "question": {
+                "en": "Explain Laravel Service Container.",
+                "hi": "Laravel Service Container को समझाइए।",
+                "gu": "Laravel Service Container સમજાવો.",
+                "hi_en": "Laravel Service Container ko explain karein.",
+                "gu_en": "Laravel Service Container ne explain karo."
+            },
+            "hint": {
+                "en": "Hint: Define it as a powerful tool for managing class dependencies and performing dependency injection.",
+                "hi": "संकेत: इसे क्लास डिपेंडेंसीज को मैनेज करने और डिपेंडेंसी इंजेक्शन करने का एक शक्तिशाली उपकरण बताएं।",
+                "gu": "સંકેત: આ ક્લાસ ડિપેન્ડન્સી મેનેજ કરવા અને ડિપેન્ડન્સી ઇન્જેક્શન કરવા માટેનું સાધન છે.",
+                "hi_en": "Hint: Batao ki ye class dependencies manage aur dependency injection karne ka tool hai.",
+                "gu_en": "Hint: Ene class dependencies manage ane dependency injection no tool tarike explain karo."
+            },
+            "evaluation": {
+                "score": 90,
+                "communication_score": 92,
+                "confidence_score": 89,
+                "positive_points": [
+                    "Explained that Service Container manages class dependencies",
+                    "Linked it with Dependency Injection"
+                ],
+                "missing_points": [
+                    "Could explain the difference between binding and resolving",
+                    "Could mention singletons"
+                ],
+                "suggestions": [
+                    "Explain bind vs singleton bindings.",
+                    "Describe how Laravel auto-resolves dependencies using Reflection."
+                ],
+                "improved_answer": "The Laravel Service Container is a powerful tool for managing class dependencies and performing dependency injection. It acts as a registry where you bind classes or interfaces, and resolves them automatically when requested, resolving nested dependencies using PHP's Reflection API.",
+                "grammar_feedback": "Excellent syntax and flow.",
+                "voice_analysis": "Speaking speed: 124 WPM. Voice clarity: 95%.",
+                "camera_analysis": "Eye contact: 91%. Smiling: Warm."
+            }
+        }
+    ]
+}
