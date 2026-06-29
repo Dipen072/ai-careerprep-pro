@@ -3,7 +3,7 @@ FROM node:20-alpine AS assets-builder
 WORKDIR /app
 COPY package*.json vite.config.js ./
 COPY resources ./resources
-RUN npm ci
+RUN npm install
 RUN npm run build
 
 # Stage 2: Production PHP Runtime
